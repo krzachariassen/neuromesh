@@ -79,7 +79,7 @@ func TestCorrelationTracker_RouteResponse_ShouldDeliverToWaitingRequest(t *testi
 func TestCorrelationTracker_RouteResponse_ShouldReturnFalseForUnknownCorrelationID(t *testing.T) {
 	// Arrange
 	tracker := NewCorrelationTracker()
-	
+
 	// Create a response for unknown correlation ID
 	agentResponse := &messaging.AgentToAIMessage{
 		AgentID:       "test-agent",

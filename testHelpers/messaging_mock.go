@@ -2,9 +2,11 @@ package testHelpers
 
 import (
 	"context"
+	"fmt"
+
+	"neuromesh/internal/messaging"
 
 	"github.com/stretchr/testify/mock"
-	"neuromesh/internal/messaging"
 )
 
 // MockMessageBus provides a testify-based mock for message bus operations
@@ -43,21 +45,41 @@ func NewMockAIMessageBus() *MockAIMessageBus {
 }
 
 func (m *MockAIMessageBus) SendToAgent(ctx context.Context, msg *messaging.AIToAgentMessage) error {
+	// Validate CorrelationID is present
+	if msg.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	args := m.Called(ctx, msg)
 	return args.Error(0)
 }
 
 func (m *MockAIMessageBus) SendToAI(ctx context.Context, msg *messaging.AgentToAIMessage) error {
+	// Validate CorrelationID is present
+	if msg.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	args := m.Called(ctx, msg)
 	return args.Error(0)
 }
 
 func (m *MockAIMessageBus) SendBetweenAgents(ctx context.Context, msg *messaging.AgentToAgentMessage) error {
+	// Validate CorrelationID is present
+	if msg.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	args := m.Called(ctx, msg)
 	return args.Error(0)
 }
 
 func (m *MockAIMessageBus) SendUserToAI(ctx context.Context, msg *messaging.UserToAIMessage) error {
+	// Validate CorrelationID is present
+	if msg.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	args := m.Called(ctx, msg)
 	return args.Error(0)
 }
@@ -76,4 +98,9 @@ func (m *MockAIMessageBus) GetConversationHistory(ctx context.Context, correlati
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]*messaging.Message), args.Error(1)
+}
+
+func (m *MockAIMessageBus) PrepareAgentQueue(ctx context.Context, agentID string) error {
+	args := m.Called(ctx, agentID)
+	return args.Error(0)
 }

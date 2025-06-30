@@ -113,6 +113,11 @@ func (rmq *RabbitMQMessageBus) setupTopology() error {
 
 // SendMessage sends a message to a specific agent
 func (rmq *RabbitMQMessageBus) SendMessage(ctx context.Context, message *Message) error {
+	// Validate CorrelationID is present
+	if message.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	if rmq.channel == nil {
 		return fmt.Errorf("not connected to RabbitMQ")
 	}

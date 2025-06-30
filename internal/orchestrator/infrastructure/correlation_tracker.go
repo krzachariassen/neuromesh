@@ -35,7 +35,7 @@ func (ct *CorrelationTracker) RegisterRequest(correlationID, userID string, time
 	defer ct.mu.Unlock()
 
 	responseChan := make(chan *messaging.AgentToAIMessage, 1)
-	
+
 	request := &CorrelationRequest{
 		CorrelationID: correlationID,
 		UserID:        userID,

@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -14,6 +15,10 @@ type MockMessageBus struct {
 }
 
 func (m *MockMessageBus) SendMessage(ctx context.Context, message *Message) error {
+	// Validate CorrelationID is present
+	if message.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
 	return nil
 }
 
@@ -28,6 +33,10 @@ func (m *MockMessageBus) Unsubscribe(ctx context.Context, participantID string) 
 }
 
 func (m *MockMessageBus) PublishMessage(ctx context.Context, message *Message, recipients []string) error {
+	// Validate CorrelationID is present
+	if message.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
 	return nil
 }
 

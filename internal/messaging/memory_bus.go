@@ -33,6 +33,11 @@ func NewMemoryMessageBus(logger logging.Logger) *MemoryMessageBus {
 
 // SendMessage sends a message to a specific recipient
 func (mb *MemoryMessageBus) SendMessage(ctx context.Context, message *Message) error {
+	// Validate CorrelationID is present
+	if message.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	mb.mutex.RLock()
 	subscriber, exists := mb.subscribers[message.ToID]
 	mb.mutex.RUnlock()

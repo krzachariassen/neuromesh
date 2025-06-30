@@ -94,6 +94,11 @@ func NewAIMessageBus(messageBus MessageBus, graph graph.Graph, logger logging.Lo
 
 // SendToAgent sends AI instructions to an agent
 func (bus *AIMessageBusImpl) SendToAgent(ctx context.Context, msg *AIToAgentMessage) error {
+	// Validate CorrelationID is present
+	if msg.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	bus.logger.Info("🤖➡️🤖 AI emitting instruction to agent",
 		"event_type", "ai_to_agent",
 		"agent_id", msg.AgentID,
@@ -144,6 +149,11 @@ func (bus *AIMessageBusImpl) SendToAgent(ctx context.Context, msg *AIToAgentMess
 
 // SendToAI sends agent questions/updates to AI
 func (bus *AIMessageBusImpl) SendToAI(ctx context.Context, msg *AgentToAIMessage) error {
+	// Validate CorrelationID is present
+	if msg.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	// Convert to generic message
 	message := &Message{
 		ID:            uuid.New().String(),
@@ -176,6 +186,11 @@ func (bus *AIMessageBusImpl) SendToAI(ctx context.Context, msg *AgentToAIMessage
 
 // SendBetweenAgents handles agent-to-agent communication (AI mediated)
 func (bus *AIMessageBusImpl) SendBetweenAgents(ctx context.Context, msg *AgentToAgentMessage) error {
+	// Validate CorrelationID is present
+	if msg.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	// Convert to generic message
 	message := &Message{
 		ID:            uuid.New().String(),
@@ -210,6 +225,11 @@ func (bus *AIMessageBusImpl) SendBetweenAgents(ctx context.Context, msg *AgentTo
 
 // SendUserToAI sends user requests to AI
 func (bus *AIMessageBusImpl) SendUserToAI(ctx context.Context, msg *UserToAIMessage) error {
+	// Validate CorrelationID is present
+	if msg.CorrelationID == "" {
+		return fmt.Errorf("correlation ID is required for all messages")
+	}
+
 	// Convert to generic message
 	message := &Message{
 		ID:            uuid.New().String(),
