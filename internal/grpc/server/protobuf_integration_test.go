@@ -10,9 +10,9 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"neuromesh/internal/agent/domain"
+	pb "neuromesh/internal/api/grpc/orchestration"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
-	pb "neuromesh/internal/api/grpc/orchestration"
 	"neuromesh/testHelpers"
 )
 

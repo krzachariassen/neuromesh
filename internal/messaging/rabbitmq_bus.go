@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"neuromesh/internal/logging"
+
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"neuromesh/internal/logging"
 )
 
 // RabbitMQMessageBus implements MessageBus using RabbitMQ
@@ -155,14 +156,15 @@ func (rmq *RabbitMQMessageBus) SendMessage(ctx context.Context, message *Message
 	return nil
 }
 
-// Subscribe subscribes an agent to messages (SOLVES RECONNECTION ISSUE)
-func (rmq *RabbitMQMessageBus) Subscribe(ctx context.Context, participantID string) (<-chan *Message, error) {
+// PrepareAgentQueue ensures queue and routing are set up for an agent without starting consumption
+// This follows Single Responsibility Principle - separates setup from consumption
+func (rmq *RabbitMQMessageBus) PrepareAgentQueue(ctx context.Context, agentID string) error {
 	if rmq.channel == nil {
-		return nil, fmt.Errorf("not connected to RabbitMQ")
+		return fmt.Errorf("not connected to RabbitMQ")
 	}
 
 	// Declare agent's queue (idempotent - won't fail if already exists)
-	queueName := fmt.Sprintf("agent.%s", participantID)
+	queueName := fmt.Sprintf("agent.%s", agentID)
 	_, err := rmq.channel.QueueDeclare(
 		queueName, // name
 		true,      // durable
@@ -172,24 +174,45 @@ func (rmq *RabbitMQMessageBus) Subscribe(ctx context.Context, participantID stri
 		amqp.Table{
 			"x-message-ttl":             300000, // 5 minutes
 			"x-dead-letter-exchange":    rmq.dlxExchange,
-			"x-dead-letter-routing-key": participantID + ".dlq",
+			"x-dead-letter-routing-key": agentID + ".dlq",
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to declare queue: %w", err)
+		return fmt.Errorf("failed to declare queue: %w", err)
 	}
 
 	// Bind queue to exchange
 	err = rmq.channel.QueueBind(
 		queueName,         // queue name
-		participantID,     // routing key
+		agentID,           // routing key
 		rmq.agentExchange, // exchange
 		false,
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to bind queue: %w", err)
+		return fmt.Errorf("failed to bind queue: %w", err)
 	}
+
+	rmq.logger.Info("✅ Agent queue prepared",
+		"agent_id", agentID,
+		"queue", queueName)
+
+	return nil
+}
+
+// Subscribe subscribes an agent to messages (SOLVES RECONNECTION ISSUE)
+func (rmq *RabbitMQMessageBus) Subscribe(ctx context.Context, participantID string) (<-chan *Message, error) {
+	if rmq.channel == nil {
+		return nil, fmt.Errorf("not connected to RabbitMQ")
+	}
+
+	// Ensure queue and routing are prepared (idempotent)
+	err := rmq.PrepareAgentQueue(ctx, participantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare agent queue: %w", err)
+	}
+
+	queueName := fmt.Sprintf("agent.%s", participantID)
 
 	// Start consuming (RabbitMQ handles reconnection automatically)
 	// Generate unique consumer tag to avoid conflicts

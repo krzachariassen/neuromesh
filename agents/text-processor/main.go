@@ -48,6 +48,12 @@ func main() {
 	log.Printf("🔗 Connected to orchestrator at %s", config.OrchestratorAddress)
 	log.Printf("🤖 Capabilities: word-count, text-analysis, character-count")
 
+	// Start heartbeat to maintain connection with orchestrator
+	heartbeatNotificationChan := make(chan bool, 1)
+	if err := textAgent.StartHeartbeat(ctx, heartbeatNotificationChan); err != nil {
+		log.Printf("⚠️ Failed to start heartbeat: %v", err)
+	}
+
 	// Wait for interrupt signal for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

@@ -38,7 +38,12 @@ func (s *StructuredLogger) Info(msg string, fields ...interface{}) {
 // Error logs an error message with optional fields
 func (s *StructuredLogger) Error(msg string, err error, fields ...interface{}) {
 	if s.level <= LevelError {
-		allFields := append([]interface{}{"error", err.Error()}, fields...)
+		var allFields []interface{}
+		if err != nil {
+			allFields = append([]interface{}{"error", err.Error()}, fields...)
+		} else {
+			allFields = fields
+		}
 		s.logWithFields("ERROR", msg, allFields...)
 	}
 }

@@ -14,9 +14,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"neuromesh/internal/agent/domain"
+	pb "neuromesh/internal/api/grpc/orchestration"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
-	pb "neuromesh/internal/api/grpc/orchestration"
 )
 
 // OrchestrationServer implements the gRPC OrchestrationService as a stateless proxy.
@@ -90,6 +90,21 @@ func (s *OrchestrationServer) RegisterAgent(ctx context.Context, req *pb.Registe
 		return nil, status.Errorf(codes.Internal, "failed to register agent: %v", err)
 	}
 
+	// Prepare agent's message queue and routing (without starting consumption)
+	// This ensures the agent can receive messages when it opens a conversation
+	err = s.messageBus.PrepareAgentQueue(ctx, req.AgentId)
+	if err != nil {
+		s.logger.Error("Failed to prepare agent queue", err,
+			"agent_id", req.AgentId)
+		// Note: We don't fail the registration since the agent is already in the graph
+		// The agent can still be used, but won't receive messages until this is fixed
+		s.logger.Warn("Agent registered but queue not prepared",
+			"agent_id", req.AgentId)
+	} else {
+		s.logger.Info("Agent queue prepared successfully",
+			"agent_id", req.AgentId)
+	}
+
 	s.logger.Info("Successfully registered agent",
 		"agent_id", req.AgentId)
 
@@ -131,6 +146,7 @@ func (s *OrchestrationServer) UnregisterAgent(ctx context.Context, req *pb.Unreg
 		return nil, status.Errorf(codes.Internal, "failed to unregister agent: %v", err)
 	}
 
+	// TODO: Add message bus cleanup when AIMessageBus supports Unsubscribe
 	s.logger.Info("Successfully unregistered agent",
 		"agent_id", req.AgentId)
 

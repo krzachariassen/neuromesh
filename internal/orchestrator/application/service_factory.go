@@ -55,6 +55,7 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 		graphExplorer,
 		aiConversationEngine,
 		learningService,
+		sf.logger,
 	)
 }
 

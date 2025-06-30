@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"neuromesh/internal/logging"
+
+	"github.com/google/uuid"
 )
 
 // MemoryMessageBus implements MessageBus using in-memory channels
@@ -66,6 +67,14 @@ func (mb *MemoryMessageBus) SendMessage(ctx context.Context, message *Message) e
 	default:
 		return fmt.Errorf("subscriber channel full for participant %s", message.ToID)
 	}
+}
+
+// PrepareAgentQueue ensures queue and routing are set up for an agent without starting consumption
+// For MemoryMessageBus, this is a no-op since queues are created on-demand
+func (mb *MemoryMessageBus) PrepareAgentQueue(ctx context.Context, agentID string) error {
+	// In-memory bus doesn't need explicit queue preparation
+	mb.logger.Debug("Queue preparation not needed for memory bus", "agent_id", agentID)
+	return nil
 }
 
 // Subscribe subscribes to messages for a specific participant

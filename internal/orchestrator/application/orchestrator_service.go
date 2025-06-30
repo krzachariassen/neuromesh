@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"neuromesh/internal/logging"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 )
 
@@ -36,6 +37,7 @@ type OrchestratorService struct {
 	graphExplorer        GraphExplorerInterface
 	aiConversationEngine AIConversationEngineInterface
 	learningService      LearningServiceInterface
+	logger               logging.Logger
 }
 
 // NewOrchestratorService creates a new orchestrator service implementation
@@ -44,12 +46,14 @@ func NewOrchestratorService(
 	graphExplorer GraphExplorerInterface,
 	aiConversationEngine AIConversationEngineInterface,
 	learningService LearningServiceInterface,
+	logger logging.Logger,
 ) *OrchestratorService {
 	return &OrchestratorService{
 		aiDecisionEngine:     aiDecisionEngine,
 		graphExplorer:        graphExplorer,
 		aiConversationEngine: aiConversationEngine,
 		learningService:      learningService,
+		logger:               logger,
 	}
 }
 
@@ -73,31 +77,39 @@ type OrchestratorResult struct {
 // ProcessUserRequest is the main entry point that replaces the old ProcessRequest()
 // This follows the clean architecture pattern with proper domain boundaries
 func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request *OrchestratorRequest) (*OrchestratorResult, error) {
+	ors.logger.Info("🔍 ProcessUserRequest started", "userInput", request.UserInput, "userID", request.UserID)
+
 	// 1. Get agent context for AI decision making
 	agentContext, err := ors.graphExplorer.GetAgentContext(ctx)
 	if err != nil {
+		ors.logger.Error("❌ Failed to get agent context", err)
 		return &OrchestratorResult{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to get agent context: %v", err),
 		}, nil // Return result with error, not Go error
 	}
+	ors.logger.Info("✅ Agent context retrieved", "agentContext", agentContext)
 
 	// 2. Perform AI analysis and decision making
 	analysis, err := ors.aiDecisionEngine.ExploreAndAnalyze(ctx, request.UserInput, request.UserID, agentContext)
 	if err != nil {
+		ors.logger.Error("❌ Failed to analyze request", err)
 		return &OrchestratorResult{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to analyze request: %v", err),
 		}, nil
 	}
+	ors.logger.Info("✅ Analysis completed", "intent", analysis.Intent, "requiredAgents", analysis.RequiredAgents)
 
 	decision, err := ors.aiDecisionEngine.MakeDecision(ctx, request.UserInput, request.UserID, analysis)
 	if err != nil {
+		ors.logger.Error("❌ Failed to make decision", err)
 		return &OrchestratorResult{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to make decision: %v", err),
 		}, nil
 	}
+	ors.logger.Info("✅ Decision made", "type", decision.Type, "clarificationQuestion", decision.ClarificationQuestion, "executionPlan", decision.ExecutionPlan)
 
 	result := &OrchestratorResult{
 		Analysis: analysis,
@@ -107,22 +119,32 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 
 	// 3. Handle decision based on type
 	if decision.Type == orchestratorDomain.DecisionTypeClarify {
+		ors.logger.Info("🤔 Decision type: Clarify")
 		result.Message = decision.ClarificationQuestion
 	} else if decision.Type == orchestratorDomain.DecisionTypeExecute {
+		ors.logger.Info("🚀 Decision type: Execute", "requiredAgents", len(analysis.RequiredAgents))
 		// AI-native execution: Let AI orchestrate with agents
 		if len(analysis.RequiredAgents) > 0 {
+			ors.logger.Info("🤖 Using AI conversation engine with agents", "agents", analysis.RequiredAgents)
 			// Use injected AI conversation engine for agent coordination
 			aiResult, err := ors.aiConversationEngine.ProcessWithAgents(ctx, request.UserInput, request.UserID, agentContext)
 			if err != nil {
+				ors.logger.Error("❌ AI-native execution failed", err)
 				result.Success = false
 				result.Error = fmt.Sprintf("AI-native execution failed: %v", err)
 			} else {
+				ors.logger.Info("✅ AI conversation engine result", "aiResult", aiResult)
 				result.Message = aiResult
 			}
 		} else {
+			ors.logger.Info("📝 No agents required, using execution plan")
 			result.Message = decision.ExecutionPlan
 		}
+	} else {
+		ors.logger.Warn("❓ Unknown decision type", "type", decision.Type)
 	}
+
+	ors.logger.Info("✅ Final result", "success", result.Success, "message", result.Message, "error", result.Error)
 
 	// 4. Store insights for learning (fixing the architecture violation)
 	err = ors.learningService.StoreInsights(ctx, request.UserInput, analysis, decision)

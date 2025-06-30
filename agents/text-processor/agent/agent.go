@@ -59,6 +59,11 @@ func (a *AINativeAgent) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to register: %w", err)
 	}
 
+	// Start conversation stream for receiving instructions
+	if err := a.startConversationStream(ctx); err != nil {
+		return fmt.Errorf("failed to start conversation stream: %w", err)
+	}
+
 	log.Printf("✅ AI-native text processing agent started successfully")
 	return nil
 }
@@ -270,7 +275,7 @@ func (a *AINativeAgent) StartHeartbeat(ctx context.Context, notificationChan cha
 	// Start heartbeat goroutine regardless of connection status
 	// In production, this should be called after connection is established
 	go a.heartbeatLoop(ctx, notificationChan)
-	
+
 	return nil
 }
 
@@ -327,4 +332,108 @@ func (a *AINativeAgent) sendHeartbeat(ctx context.Context, notificationChan chan
 			// Channel full or closed, continue without blocking
 		}
 	}
+}
+
+// processConversationMessage handles incoming conversation messages and returns appropriate responses
+func (a *AINativeAgent) processConversationMessage(msg *pb.ConversationMessage) *pb.ConversationMessage {
+	log.Printf("📨 Processing conversation message: %s (type: %v)", msg.MessageId, msg.Type)
+
+	switch msg.Type {
+	case pb.MessageType_MESSAGE_TYPE_INSTRUCTION:
+		// Process the instruction and create a completion response
+		result := a.ProcessInstruction(msg.Content)
+
+		// Create completion message using existing method
+		completion := a.createCompletionMessage(msg.MessageId, msg.CorrelationId, result, true, "")
+
+		// Convert to conversation message format
+		return &pb.ConversationMessage{
+			MessageId:     completion.CompletionId,
+			CorrelationId: msg.CorrelationId,
+			FromId:        a.config.AgentID,
+			ToId:          "orchestrator",
+			Type:          pb.MessageType_MESSAGE_TYPE_COMPLETION,
+			Content:       completion.Content,
+			Context:       completion.ResultData,
+			Timestamp:     completion.Timestamp,
+		}
+
+	case pb.MessageType_MESSAGE_TYPE_HEARTBEAT:
+		// Respond to heartbeat
+		log.Printf("💓 Received heartbeat message")
+		return &pb.ConversationMessage{
+			MessageId:     fmt.Sprintf("heartbeat-response-%d", time.Now().UnixNano()),
+			CorrelationId: msg.CorrelationId,
+			FromId:        a.config.AgentID,
+			ToId:          "orchestrator",
+			Type:          pb.MessageType_MESSAGE_TYPE_HEARTBEAT,
+			Content:       "Agent is healthy",
+			Timestamp:     timestamppb.Now(),
+		}
+
+	default:
+		log.Printf("⚠️ Unknown message type: %v", msg.Type)
+		return nil
+	}
+}
+
+// startConversationStream opens and maintains a conversation stream with the orchestrator
+func (a *AINativeAgent) startConversationStream(ctx context.Context) error {
+	log.Printf("🔄 Starting conversation stream for agent %s", a.config.AgentID)
+
+	// Open conversation stream
+	stream, err := a.client.OpenConversation(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to open conversation stream: %v", err)
+	}
+
+	// Send initial identification message
+	identMsg := &pb.ConversationMessage{
+		MessageId:     fmt.Sprintf("ident-%d", time.Now().UnixNano()),
+		CorrelationId: "",
+		FromId:        a.config.AgentID,
+		ToId:          "orchestrator",
+		Type:          pb.MessageType_MESSAGE_TYPE_STATUS_UPDATE,
+		Content:       "Agent ready for instructions",
+		Timestamp:     timestamppb.Now(),
+	}
+
+	if err := stream.Send(identMsg); err != nil {
+		return fmt.Errorf("failed to send identification message: %v", err)
+	}
+
+	log.Printf("✅ Conversation stream established for agent %s", a.config.AgentID)
+
+	// Listen for messages from orchestrator
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("🛑 Conversation stream context cancelled for agent %s", a.config.AgentID)
+				return
+			default:
+				// Receive message from orchestrator
+				msg, err := stream.Recv()
+				if err != nil {
+					log.Printf("❌ Error receiving message from stream: %v", err)
+					return
+				}
+
+				log.Printf("📨 Received message from orchestrator: %s", msg.MessageId)
+
+				// Process the message
+				response := a.processConversationMessage(msg)
+				if response != nil {
+					// Send response back to orchestrator
+					if err := stream.Send(response); err != nil {
+						log.Printf("❌ Failed to send response: %v", err)
+						return
+					}
+					log.Printf("📤 Sent response: %s", response.MessageId)
+				}
+			}
+		}
+	}()
+
+	return nil
 }

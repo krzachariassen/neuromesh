@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	aiDomain "neuromesh/internal/ai/domain"
@@ -25,17 +26,30 @@ const (
 // AIConversationEngine orchestrates AI-native conversations with agents using events
 // This replaces the rigid ExecutionCoordinator with AI-mediated execution via RabbitMQ events
 type AIConversationEngine struct {
-	aiProvider     aiDomain.AIProvider
-	aiMessageBus   messaging.AIMessageBus
-	conversationID string
+	aiProvider       aiDomain.AIProvider
+	aiMessageBus     messaging.AIMessageBus
+	conversationID   string
+	responseChannel  <-chan *messaging.Message
+	subscriptionOnce sync.Once
+	channelMutex     sync.RWMutex
 }
 
 // NewAIConversationEngine creates a new AI conversation engine
 func NewAIConversationEngine(aiProvider aiDomain.AIProvider, aiMessageBus messaging.AIMessageBus) *AIConversationEngine {
-	return &AIConversationEngine{
+	engine := &AIConversationEngine{
 		aiProvider:   aiProvider,
 		aiMessageBus: aiMessageBus,
 	}
+
+	// Prepare queue for receiving agent responses
+	// Use a background context since this is initialization
+	ctx := context.Background()
+	if err := aiMessageBus.PrepareAgentQueue(ctx, "ai-orchestrator"); err != nil {
+		// Log error but don't fail - queue can be prepared later if needed
+		fmt.Printf("Warning: Failed to prepare orchestrator queue: %v\n", err)
+	}
+
+	return engine
 }
 
 // buildSystemPrompt creates the AI orchestration system prompt
@@ -173,12 +187,26 @@ If ready to respond to user, respond with:
 	return e.extractUserResponse(response), nil
 }
 
+// ensureSubscription ensures we have a single persistent subscription channel
+func (e *AIConversationEngine) ensureSubscription(ctx context.Context) error {
+	e.channelMutex.Lock()
+	defer e.channelMutex.Unlock()
+
+	if e.responseChannel == nil {
+		var err error
+		e.responseChannel, err = e.aiMessageBus.Subscribe(ctx, "ai-orchestrator")
+		if err != nil {
+			return fmt.Errorf("failed to create subscription: %w", err)
+		}
+	}
+	return nil
+}
+
 // waitForAgentResponse waits for a real agent response via RabbitMQ events
 func (e *AIConversationEngine) waitForAgentResponse(ctx context.Context, correlationID string) (*messaging.AgentToAIMessage, error) {
-	// Subscribe to agent responses for this orchestrator
-	responseChannel, err := e.aiMessageBus.Subscribe(ctx, "orchestrator")
-	if err != nil {
-		return nil, fmt.Errorf("failed to subscribe to agent responses: %w", err)
+	// Ensure we have a persistent subscription
+	if err := e.ensureSubscription(ctx); err != nil {
+		return nil, err
 	}
 
 	// Create timeout context
@@ -188,7 +216,7 @@ func (e *AIConversationEngine) waitForAgentResponse(ctx context.Context, correla
 	// Wait for agent response with timeout
 	for {
 		select {
-		case message := <-responseChannel:
+		case message := <-e.responseChannel:
 			// Check if this message is a response to our request
 			if message != nil && message.CorrelationID == correlationID {
 				// Parse the message as an agent response
@@ -198,6 +226,7 @@ func (e *AIConversationEngine) waitForAgentResponse(ctx context.Context, correla
 				}
 				return agentResponse, nil
 			}
+			// If it's not our correlation ID, continue waiting
 		case <-timeoutCtx.Done():
 			return nil, fmt.Errorf("timeout waiting for agent response (correlation ID: %s)", correlationID)
 		}

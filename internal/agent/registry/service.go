@@ -68,10 +68,10 @@ func (s *Service) RegisterAgent(ctx context.Context, agent *domain.Agent) error 
 		"description":  agent.Description,
 		"status":       string(agent.Status),
 		"capabilities": capabilitiesJSON,
-		"last_seen":    agent.LastSeen,
+		"last_seen":    agent.LastSeen.UTC(),
 		"metadata":     metadataJSON,
-		"created_at":   time.Now(),
-		"updated_at":   time.Now(),
+		"created_at":   time.Now().UTC(),
+		"updated_at":   time.Now().UTC(),
 	}
 
 	err := s.graph.AddNode(ctx, "agent", agent.ID, properties)
@@ -242,7 +242,7 @@ func (s *Service) UpdateAgentStatus(ctx context.Context, agentID string, status 
 
 	properties := map[string]interface{}{
 		"status":     string(status),
-		"updated_at": time.Now(),
+		"updated_at": time.Now().UTC(),
 	}
 
 	err := s.graph.UpdateNode(ctx, "agent", agentID, properties)
@@ -264,8 +264,8 @@ func (s *Service) UpdateAgentLastSeen(ctx context.Context, agentID string) error
 	}
 
 	properties := map[string]interface{}{
-		"last_seen":  time.Now(),
-		"updated_at": time.Now(),
+		"last_seen":  time.Now().UTC(),
+		"updated_at": time.Now().UTC(),
 	}
 
 	err := s.graph.UpdateNode(ctx, "agent", agentID, properties)

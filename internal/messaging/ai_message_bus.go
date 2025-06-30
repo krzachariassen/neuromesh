@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"neuromesh/internal/graph"
 	"neuromesh/internal/logging"
+
+	"github.com/google/uuid"
 )
 
 // AIMessageBus provides natural language communication between AI, agents, and users
@@ -30,6 +31,9 @@ type AIMessageBus interface {
 
 	// Get conversation history from graph
 	GetConversationHistory(ctx context.Context, correlationID string) ([]*Message, error)
+
+	// Prepare agent queue for message reception (without starting consumption)
+	PrepareAgentQueue(ctx context.Context, agentID string) error
 }
 
 // AIToAgentMessage represents AI instructions to an agent
@@ -246,6 +250,11 @@ func (bus *AIMessageBusImpl) GetConversationHistory(ctx context.Context, correla
 	// Use graph to retrieve conversation history
 	// For now, return the message bus history
 	return bus.messageBus.GetConversationHistory(ctx, correlationID)
+}
+
+// PrepareAgentQueue ensures queue and routing are set up for an agent without starting consumption
+func (bus *AIMessageBusImpl) PrepareAgentQueue(ctx context.Context, agentID string) error {
+	return bus.messageBus.PrepareAgentQueue(ctx, agentID)
 }
 
 // storeMessageInGraph stores a message in the graph for persistence and AI learning

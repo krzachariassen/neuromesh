@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/gorilla/websocket"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/orchestrator/application"
+
+	"github.com/gorilla/websocket"
 )
 
 // ChatRequest represents a chat request from the web UI
@@ -21,10 +22,11 @@ type ChatRequest struct {
 
 // WebResponse represents a response from the WebBFF to the web client
 type WebResponse struct {
-	Content   string `json:"content"`
-	SessionID string `json:"session_id"`
-	Intent    string `json:"intent,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Content       string `json:"content"`
+	SessionID     string `json:"session_id"`
+	Intent        string `json:"intent,omitempty"`
+	Error         string `json:"error,omitempty"`
+	CorrelationID string `json:"correlation_id,omitempty"`
 }
 
 // AIOrchestrator defines the interface for AI orchestration operations
@@ -100,11 +102,40 @@ func (w *WebBFF) ProcessWebMessage(ctx context.Context, sessionID, message strin
 		}, nil // Return nil error to indicate graceful error handling
 	}
 
+	// Check if the orchestrator result indicates failure
+	if aiResponse != nil && !aiResponse.Success {
+		if w.logger != nil {
+			w.logger.Error("AI orchestrator returned failure", nil, "sessionID", sessionID, "error", aiResponse.Error)
+		}
+		return &WebResponse{
+			Content:   fmt.Sprintf("I'm sorry, I encountered an error: %s", aiResponse.Error),
+			SessionID: sessionID,
+			Error:     aiResponse.Error,
+		}, nil // Return nil error to indicate graceful error handling
+	}
+
+	// Handle case where aiResponse is nil
+	if aiResponse == nil {
+		if w.logger != nil {
+			w.logger.Error("AI orchestrator returned nil response", nil, "sessionID", sessionID)
+		}
+		return &WebResponse{
+			Content:   "I'm sorry, I encountered an unexpected error. Please try again.",
+			SessionID: sessionID,
+			Error:     "orchestrator returned nil response",
+		}, nil
+	}
+
 	// Convert AI response to web response
+	var intent string
+	if aiResponse.Analysis != nil {
+		intent = aiResponse.Analysis.Intent
+	}
+
 	webResponse := &WebResponse{
 		Content:   aiResponse.Message,
 		SessionID: sessionID,
-		Intent:    aiResponse.Analysis.Intent,
+		Intent:    intent,
 	}
 
 	w.logger.Info("Web message processed successfully", "sessionID", sessionID)

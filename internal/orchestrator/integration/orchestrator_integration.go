@@ -22,9 +22,27 @@ func NewOrchestratorIntegration(orchestratorService *application.OrchestratorSer
 	}
 }
 
-// ProcessRequest provides backward compatibility with the old ProcessRequest interface
+// ProcessRequest provides the interface expected by WebBFF
+// This method returns the full OrchestratorResult structure
+func (oi *OrchestratorIntegration) ProcessRequest(ctx context.Context, userInput, userID string) (*application.OrchestratorResult, error) {
+	// Convert to new request format
+	request := &application.OrchestratorRequest{
+		UserInput: userInput,
+		UserID:    userID,
+	}
+
+	// Use the new orchestrator service
+	result, err := oi.orchestratorService.ProcessUserRequest(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// ProcessRequestLegacy provides backward compatibility with the old ProcessRequest interface (string return)
 // This method maintains the same signature as the old orchestrator but uses the new clean architecture
-func (oi *OrchestratorIntegration) ProcessRequest(ctx context.Context, userInput, userID string) (string, error) {
+func (oi *OrchestratorIntegration) ProcessRequestLegacy(ctx context.Context, userInput, userID string) (string, error) {
 	// Convert to new request format
 	request := &application.OrchestratorRequest{
 		UserInput: userInput,

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/ztdp/agents/text-processor/proto/orchestration"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,6 +74,36 @@ func TestAINativeAgent_ProcessInstruction(t *testing.T) {
 		result := agent.ProcessInstruction(instruction)
 
 		assert.Contains(t, result, "2 words")
+	})
+
+	t.Run("should handle conversation stream messages", func(t *testing.T) {
+		// Test that the agent can process instruction messages from a conversation stream
+		// This tests the integration between stream message handling and instruction processing
+
+		instruction := `Count the words in "Hello world"`
+		expectedContent := `The text "Hello world" contains 2 words.`
+
+		// Create a mock conversation message
+		msg := &pb.ConversationMessage{
+			MessageId:     "test-msg-1",
+			CorrelationId: "test-corr-1",
+			FromId:        "orchestrator",
+			ToId:          agent.config.AgentID,
+			Type:          pb.MessageType_MESSAGE_TYPE_INSTRUCTION,
+			Content:       instruction,
+			Context:       nil,
+		}
+
+		// Process the message (this should call ProcessInstruction internally)
+		response := agent.processConversationMessage(msg)
+
+		// Verify the response is a completion message
+		assert.NotNil(t, response)
+		assert.Equal(t, pb.MessageType_MESSAGE_TYPE_COMPLETION, response.Type)
+		assert.Equal(t, agent.config.AgentID, response.FromId)
+		assert.Equal(t, "orchestrator", response.ToId)
+		assert.Equal(t, "test-corr-1", response.CorrelationId)
+		assert.Equal(t, expectedContent, response.Content)
 	})
 }
 

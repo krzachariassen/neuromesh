@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.21.12
-// source: proto/orchestration.proto
+// source: api/proto/orchestration.proto
 
 package orchestration
 
@@ -312,5 +312,5 @@ var OrchestrationService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/orchestration.proto",
+	Metadata: "api/proto/orchestration.proto",
 }

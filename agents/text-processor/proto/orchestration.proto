@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package orchestration;
 
-option go_package = "neuromesh/proto/orchestration";
+option go_package = "neuromesh/internal/api/grpc/orchestration";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";

@@ -15,13 +15,13 @@ import (
 
 	"neuromesh/internal/agent/registry"
 	aiInfrastructure "neuromesh/internal/ai/infrastructure"
+	pb "neuromesh/internal/api/grpc/orchestration"
 	"neuromesh/internal/graph"
 	"neuromesh/internal/grpc/server"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
 	"neuromesh/internal/orchestrator/application"
 	"neuromesh/internal/web"
-	pb "neuromesh/internal/api/grpc/orchestration"
 )
 
 // getEnvOrDefault gets an environment variable or returns a default value

@@ -24,6 +24,9 @@ type MessageBus interface {
 
 	// Create new conversation context
 	CreateConversation(ctx context.Context, participants []string, context map[string]interface{}) (*ConversationContext, error)
+
+	// PrepareAgentQueue ensures queue and routing are set up for an agent without starting consumption
+	PrepareAgentQueue(ctx context.Context, agentID string) error
 }
 
 // MessageHandler handles incoming messages
