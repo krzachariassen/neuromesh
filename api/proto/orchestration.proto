@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+package orchestration;
+
+option go_package = "neuromesh/internal/api/grpc/orchestration";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// AI-Native OrchestrationService for event-driven agent communication
+// This service is designed for AI-first, conversational agent orchestration
+service OrchestrationService {
+  // Agent lifecycle management
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+  rpc UnregisterAgent(UnregisterAgentRequest) returns (UnregisterAgentResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  
+  // AI-native conversational communication
+  rpc OpenConversation(stream ConversationMessage) returns (stream ConversationMessage);
+  rpc SendInstruction(InstructionMessage) returns (InstructionResponse);
+  rpc ReportCompletion(CompletionMessage) returns (CompletionResponse);
+}
+
+// Agent registration - simplified for AI-native approach
+message RegisterAgentRequest {
+  string agent_id = 1;
+  string name = 2;
+  string type = 3;
+  repeated AgentCapability capabilities = 4;
+  string version = 5;
+  google.protobuf.Struct metadata = 6;
+}
+
+message RegisterAgentResponse {
+  bool success = 1;
+  string message = 2;
+  string session_id = 3;
+  google.protobuf.Timestamp registered_at = 4;
+}
+
+// Agent capabilities - what the agent can do
+message AgentCapability {
+  string name = 1;          // e.g., "word-count", "text-analysis"
+  string description = 2;   // Human-readable description for AI
+  repeated string inputs = 3;    // Expected input types
+  repeated string outputs = 4;   // Expected output types
+}
+
+// Heartbeat - simple health check
+message HeartbeatRequest {
+  string agent_id = 1;
+  string session_id = 2;
+  AgentStatus status = 3;
+  google.protobuf.Struct health_metrics = 4;
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+  google.protobuf.Timestamp server_time = 2;
+  string message = 3;
+}
+
+// Agent unregistration
+message UnregisterAgentRequest {
+  string agent_id = 1;
+  string session_id = 2;
+  string reason = 3;
+}
+
+message UnregisterAgentResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// AI-native conversational communication
+// This replaces the old work-based pull/push model with direct AI instructions
+
+message ConversationMessage {
+  string message_id = 1;
+  string correlation_id = 2;
+  string from_id = 3;       // agent_id or "orchestrator" 
+  string to_id = 4;         // agent_id or "orchestrator"
+  MessageType type = 5;
+  string content = 6;       // Natural language instruction or response
+  google.protobuf.Struct context = 7;
+  google.protobuf.Timestamp timestamp = 8;
+}
+
+// AI sends natural language instructions to agents
+message InstructionMessage {
+  string instruction_id = 1;
+  string correlation_id = 2;
+  string agent_id = 3;
+  string content = 4;        // Natural language instruction from AI
+  string capability = 5;     // Which agent capability to use
+  google.protobuf.Struct parameters = 6;
+  google.protobuf.Timestamp timestamp = 7;
+}
+
+message InstructionResponse {
+  bool success = 1;
+  string message = 2;
+  string instruction_id = 3;
+  string correlation_id = 4;
+}
+
+// Agent reports completion with natural language response
+message CompletionMessage {
+  string completion_id = 1;
+  string correlation_id = 2;
+  string instruction_id = 3;  // Reference to the original instruction
+  string agent_id = 4;
+  bool success = 5;
+  string content = 6;         // Natural language response
+  string error_message = 7;   // If success = false
+  google.protobuf.Struct result_data = 8;
+  google.protobuf.Timestamp timestamp = 9;
+}
+
+message CompletionResponse {
+  bool success = 1;
+  string message = 2;
+  string completion_id = 3;
+}
+
+// Enums for AI-native communication
+enum AgentStatus {
+  AGENT_STATUS_UNKNOWN = 0;
+  AGENT_STATUS_HEALTHY = 1;
+  AGENT_STATUS_BUSY = 2;
+  AGENT_STATUS_ERROR = 3;
+  AGENT_STATUS_SHUTTING_DOWN = 4;
+}
+
+enum MessageType {
+  MESSAGE_TYPE_UNKNOWN = 0;
+  MESSAGE_TYPE_INSTRUCTION = 1;     // AI → Agent: Natural language instruction
+  MESSAGE_TYPE_COMPLETION = 2;      // Agent → AI: Task completion response
+  MESSAGE_TYPE_STATUS_UPDATE = 3;   // Agent status updates
+  MESSAGE_TYPE_ERROR = 4;           // Error notifications
+  MESSAGE_TYPE_HEARTBEAT = 5;       // Keep-alive messages
+}
