@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
 )
 
@@ -136,6 +137,11 @@ func (m *mockMessageBus) GetConversationHistory(ctx context.Context, correlation
 	return []*messaging.Message{}, nil
 }
 
+func (m *mockMessageBus) PrepareAgentQueue(ctx context.Context, agentID string) error {
+	// Mock implementation - just return nil
+	return nil
+}
+
 // TDD Enforcement Test: Ensure no MockAIProvider usage
 func TestNoMockAIProviderUsage_TDD_GREEN(t *testing.T) {
 	t.Run("GREEN: should pass now that MockAIProvider is removed", func(t *testing.T) {
@@ -162,7 +168,7 @@ func TestOrchestratorService_ProcessConversation_TDD(t *testing.T) {
 		mockConversationEngine := &MockAIConversationEngine{}
 		mockLearning := &MockLearningService{}
 
-		service := NewOrchestratorService(aiDecisionEngine, mockExplorer, mockConversationEngine, mockLearning)
+		service := NewOrchestratorService(aiDecisionEngine, mockExplorer, mockConversationEngine, mockLearning, logging.NewNoOpLogger())
 
 		agentContext := `Available agents:
 - text-processor (ID: text-processor, Status: online)
@@ -203,7 +209,7 @@ func TestOrchestratorService_EndToEnd_RealAI_TDD(t *testing.T) {
 		mockExplorer := &MockGraphExplorer{}
 		mockLearning := &MockLearningService{}
 
-		service := NewOrchestratorService(aiDecisionEngine, mockExplorer, aiConversationEngine, mockLearning)
+		service := NewOrchestratorService(aiDecisionEngine, mockExplorer, aiConversationEngine, mockLearning, logging.NewNoOpLogger())
 
 		agentContext := `Available agents:
 - text-processor (ID: text-processor, Status: online)

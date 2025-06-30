@@ -74,7 +74,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		mockConversationEngine := &MockAIConversationEngine{}
 		mockLearning := &MockLearningService{}
 
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning, logging.NewNoOpLogger())
 
 		// Test data
 		request := &OrchestratorRequest{
@@ -117,7 +117,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		mockConversationEngine := &MockAIConversationEngine{}
 		mockLearning := &MockLearningService{}
 
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning, logging.NewNoOpLogger())
 
 		// Test data
 		request := &OrchestratorRequest{
@@ -167,7 +167,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		mockConversationEngine := &MockAIConversationEngine{}
 		mockLearning := &MockLearningService{}
 
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning, logging.NewNoOpLogger())
 
 		request := &OrchestratorRequest{
 			UserInput: "Deploy app",
