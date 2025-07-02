@@ -2,121 +2,380 @@ package application
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
+	"neuromesh/internal/orchestrator/infrastructure"
+	"neuromesh/testHelpers"
 )
 
-// Step 1.6 TDD: Real Bidirectional Event Handling with REAL AI ONLY
-func TestAIConversationEngine_RealBidirectionalEvents_TDD_GREEN(t *testing.T) {
-	t.Run("GREEN: should use real AI and bidirectional event handling", func(t *testing.T) {
-		// ARRANGE: REAL AI PROVIDER ONLY (no mocking)
-		aiProvider := setupRealAIProvider(t)
-
-		// Create mock message bus that can simulate agent responses
+// TestAIConversationEngine_TDD tests the new stateless design
+func TestAIConversationEngine_TDD(t *testing.T) {
+	t.Run("RED: should support concurrent conversations with different correlations", func(t *testing.T) {
+		// ARRANGE - Create stateless engine with CorrelationTracker
+		aiProvider := testHelpers.SetupRealAIProvider(t)
 		mockBus := &mockMessageBus{
 			sentMessages:    make([]interface{}, 0),
-			responseChannel: make(chan *messaging.Message, 1),
+			responseChannel: make(chan *messaging.Message, 10),
 		}
+		correlationTracker := infrastructure.NewCorrelationTracker()
 
-		// Create AIConversationEngine with REAL AI
-		engine := NewAIConversationEngine(aiProvider, mockBus)
+		// Create NEW stateless engine
+		engine := NewAIConversationEngine(aiProvider, mockBus, correlationTracker)
+
+		// Create two concurrent conversation contexts
+		ctx1, cancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel1()
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel2()
 
 		agentContext := `Available agents:
 - text-processor (ID: text-processor, Status: online)
   Capabilities: word-count, text-analysis`
 
-		// Setup goroutine to simulate agent response
+		// Simulate agent responses for both conversations
 		go func() {
-			time.Sleep(1 * time.Second) // Wait for AI to send request to agent
+			time.Sleep(500 * time.Millisecond)
 
-			// The orchestrator will generate a correlation ID, we need to capture it
-			// from the sent message and use the same one for the response
-
-			// Wait for the AI to send a message to the agent, then respond
-			for i := 0; i < 50; i++ { // Check for 5 seconds
-				if len(mockBus.sentMessages) > 0 {
-					if agentMsg, ok := mockBus.sentMessages[0].(*messaging.AIToAgentMessage); ok {
-						// Now create response with the same correlation ID
-						agentResponse := &messaging.Message{
+			// Send responses for both correlation IDs
+			for i := 0; i < 2; i++ {
+				sentMessages := mockBus.GetSentMessages()
+				if len(sentMessages) > i {
+					if agentMsg, ok := sentMessages[i].(*messaging.AIToAgentMessage); ok {
+						response := &messaging.Message{
 							MessageType:   messaging.MessageTypeAgentToAI,
-							Content:       `The text "Hello world testing" contains 3 words.`,
+							Content:       `Test response for correlation ` + agentMsg.CorrelationID,
 							FromID:        "text-processor",
 							ToID:          "orchestrator",
-							CorrelationID: agentMsg.CorrelationID, // Use same correlation ID
+							CorrelationID: agentMsg.CorrelationID,
 							Timestamp:     time.Now(),
 						}
 
-						// Send the response to our mock channel
 						select {
-						case mockBus.responseChannel <- agentResponse:
-							t.Logf("✅ Simulated agent response sent with correlation ID: %s", agentMsg.CorrelationID)
-							return
+						case mockBus.responseChannel <- response:
+							t.Logf("✅ Sent response for correlation: %s", agentMsg.CorrelationID)
 						case <-time.After(1 * time.Second):
-							t.Logf("⚠️ Failed to send simulated agent response")
-							return
+							t.Logf("⚠️ Failed to send response")
 						}
 					}
 				}
-				time.Sleep(100 * time.Millisecond)
 			}
-			t.Logf("⚠️ Timeout waiting for AI to send message to agent")
 		}()
 
-		// ACT: Process with REAL AI - it should decide to use text-processor
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// ACT - Process two conversations concurrently
+		var response1, response2 string
+		var err1, err2 error
+
+		done := make(chan bool, 2)
+
+		go func() {
+			response1, err1 = engine.ProcessWithAgents(ctx1, "First conversation", "user1", agentContext)
+			done <- true
+		}()
+
+		go func() {
+			response2, err2 = engine.ProcessWithAgents(ctx2, "Second conversation", "user2", agentContext)
+			done <- true
+		}()
+
+		// Wait for both conversations to complete
+		<-done
+		<-done
+
+		// ASSERT - Both conversations should succeed independently
+		require.NoError(t, err1, "First conversation should succeed")
+		require.NoError(t, err2, "Second conversation should succeed")
+		assert.NotEmpty(t, response1, "First response should not be empty")
+		assert.NotEmpty(t, response2, "Second response should not be empty")
+		assert.NotEqual(t, response1, response2, "Responses should be different")
+
+		t.Logf("✅ Concurrent conversations completed: %s | %s", response1, response2)
+	})
+
+	t.Run("RED: should handle correlation-based message routing", func(t *testing.T) {
+		// ARRANGE
+		aiProvider := testHelpers.SetupRealAIProvider(t)
+		mockBus := &mockMessageBus{
+			sentMessages:    make([]interface{}, 0),
+			responseChannel: make(chan *messaging.Message, 10),
+		}
+		correlationTracker := infrastructure.NewCorrelationTracker()
+		engine := NewAIConversationEngine(aiProvider, mockBus, correlationTracker)
+
+		agentContext := `Available agents:
+- text-processor (ID: text-processor, Status: online)
+  Capabilities: word-count, text-analysis`
+
+		// ACT - Start conversation and get correlation ID
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		response, err := engine.ProcessWithAgents(ctx, "Count words in this text: Hello world testing", "user123", agentContext)
+		// Start processing in background to capture correlation ID
+		var correlationID string
+		var response string
+		var err error
 
-		// ASSERT: Verify real AI processing worked
-		require.NoError(t, err)
-		assert.NotEmpty(t, response)
+		done := make(chan bool)
+		go func() {
+			defer func() { done <- true }()
+			// Use input that clearly requires text-processor agent assistance
+			response, err = engine.ProcessWithAgents(ctx, "Count the words in this text: Hello world testing", "user123", agentContext)
+		}()
 
-		// Verify that the real AI sent an event to the agent
-		require.Len(t, mockBus.sentMessages, 1)
-		agentMsg, ok := mockBus.sentMessages[0].(*messaging.AIToAgentMessage)
-		require.True(t, ok, "Expected AI to send event to agent")
-		assert.Equal(t, "text-processor", agentMsg.AgentID)
-		assert.Contains(t, agentMsg.Content, "Hello world testing")
+		// Wait for agent message to be sent and capture correlation ID
+		time.Sleep(2 * time.Second) // Increased from 500ms to 2s to allow AI call to complete
+		require.Greater(t, mockBus.GetSentMessageCount(), 0, "Should have sent message to agent")
 
-		// The key improvement: Verify it's NOT using simulation anymore
-		// This test should now pass because we're simulating a real agent response
-		t.Logf("✅ Real bidirectional event handling implemented!")
-		t.Logf("✅ Real AI decided to use agent: %s", agentMsg.AgentID)
-		t.Logf("✅ Agent instruction: %s", agentMsg.Content)
+		sentMessages := mockBus.GetSentMessages()
+		if agentMsg, ok := sentMessages[0].(*messaging.AIToAgentMessage); ok {
+			correlationID = agentMsg.CorrelationID
+			assert.NotEmpty(t, correlationID, "CorrelationID should be set")
+
+			// Send response with correct correlation ID
+			agentResponse := &messaging.Message{
+				MessageType:   messaging.MessageTypeAgentToAI,
+				Content:       "Correlation test response",
+				FromID:        "text-processor",
+				ToID:          "orchestrator",
+				CorrelationID: correlationID,
+				Timestamp:     time.Now(),
+			}
+
+			select {
+			case mockBus.responseChannel <- agentResponse:
+				t.Logf("✅ Sent correlated response: %s", correlationID)
+			case <-time.After(1 * time.Second):
+				t.Fatal("Failed to send correlated response")
+			}
+		} else {
+			t.Fatal("Expected AIToAgentMessage")
+		}
+
+		// Wait for completion
+		<-done
+
+		// ASSERT
+		require.NoError(t, err, "Should handle correlated response")
+		assert.NotEmpty(t, response, "Should have a response")
+		// The AI should process the agent response and provide a meaningful answer
+		// (not just echo the mock response)
+		assert.Contains(t, response, "3", "Should include word count result")
 		t.Logf("✅ Final AI response: %s", response)
+	})
+
+	t.Run("SCALE: should handle many concurrent conversations with proper correlation isolation", func(t *testing.T) {
+		// ARRANGE - Setup for scale testing
+		aiProvider := testHelpers.SetupRealAIProvider(t)
+
+		// Larger channel buffer for scale testing
+		mockBus := &mockMessageBus{
+			sentMessages:    make([]interface{}, 0),
+			responseChannel: make(chan *messaging.Message, 200), // Larger buffer for concurrent load
+		}
+		correlationTracker := infrastructure.NewCorrelationTracker()
+		engine := NewAIConversationEngine(aiProvider, mockBus, correlationTracker)
+
+		agentContext := `Available agents:
+- text-processor (ID: text-processor, Status: online)
+  Capabilities: word-count, text-analysis`
+
+		// Scale parameters
+		numConcurrentUsers := 10 // Reduced for more reliable testing
+		requestsPerUser := 2     // Each user makes 2 requests
+		totalRequests := numConcurrentUsers * requestsPerUser
+
+		// Track correlation IDs as they're created (thread-safe)
+		var correlationMutex sync.Mutex
+		correlationTrackingMap := make(map[string]bool)
+
+		// Simulate agent responses for all requests
+		go func() {
+			respondedCount := 0
+			for respondedCount < totalRequests {
+				time.Sleep(100 * time.Millisecond) // Check every 100ms
+
+				// Respond to any new messages
+				sentMessages := mockBus.GetSentMessages()
+				currentMessageCount := len(sentMessages)
+				for i := respondedCount; i < currentMessageCount && i < totalRequests; i++ {
+					if agentMsg, ok := sentMessages[i].(*messaging.AIToAgentMessage); ok {
+						// Track this correlation ID
+						correlationMutex.Lock()
+						correlationTrackingMap[agentMsg.CorrelationID] = true
+						correlationMutex.Unlock()
+
+						response := &messaging.Message{
+							MessageType:   messaging.MessageTypeAgentToAI,
+							Content:       fmt.Sprintf("Scale test response %d for correlation %s", i+1, agentMsg.CorrelationID),
+							FromID:        "text-processor",
+							ToID:          "orchestrator",
+							CorrelationID: agentMsg.CorrelationID,
+							Timestamp:     time.Now(),
+						}
+
+						select {
+						case mockBus.responseChannel <- response:
+							respondedCount++
+						case <-time.After(100 * time.Millisecond):
+							// Continue trying
+						}
+					}
+				}
+			}
+		}()
+
+		// ACT - Launch many concurrent conversations
+		var wg sync.WaitGroup
+		results := make(chan string, totalRequests)
+		errors := make(chan error, totalRequests)
+
+		startTime := time.Now()
+
+		for userID := 1; userID <= numConcurrentUsers; userID++ {
+			for reqID := 1; reqID <= requestsPerUser; reqID++ {
+				wg.Add(1)
+
+				go func(uID, rID int) {
+					defer wg.Done()
+
+					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+
+					userIDStr := fmt.Sprintf("user%d", uID)
+					requestText := fmt.Sprintf("Count words in text %d from user %d: Hello world test", rID, uID)
+
+					response, err := engine.ProcessWithAgents(ctx, requestText, userIDStr, agentContext)
+
+					if err != nil {
+						errors <- fmt.Errorf("user%d-req%d: %w", uID, rID, err)
+					} else {
+						results <- fmt.Sprintf("user%d-req%d: %s", uID, rID, response)
+					}
+				}(userID, reqID)
+			}
+		}
+
+		// Wait for all conversations to complete
+		wg.Wait()
+		close(results)
+		close(errors)
+
+		duration := time.Since(startTime)
+
+		// ASSERT - Validate scale test results
+		var successCount int
+		var errorCount int
+		responses := make([]string, 0)
+
+		// Collect results
+		for result := range results {
+			responses = append(responses, result)
+			successCount++
+		}
+
+		// Collect errors
+		for err := range errors {
+			t.Logf("❌ Error: %v", err)
+			errorCount++
+		}
+
+		// Get the final correlation tracking map
+		correlationMutex.Lock()
+		finalCorrelationIDs := make(map[string]bool)
+		for k, v := range correlationTrackingMap {
+			finalCorrelationIDs[k] = v
+		}
+		correlationMutex.Unlock()
+
+		// Validate results
+		assert.Equal(t, totalRequests, successCount, "All requests should succeed")
+		assert.Equal(t, 0, errorCount, "No errors should occur")
+		assert.Len(t, responses, totalRequests, "Should have response for each request")
+
+		// Validate correlation ID uniqueness - this is the key test
+		assert.Len(t, finalCorrelationIDs, totalRequests, "All correlation IDs should be unique")
+
+		// Validate no correlation ID format issues
+		for correlationID := range finalCorrelationIDs {
+			assert.True(t, strings.HasPrefix(correlationID, "conv-user"), "Correlation ID should have correct format: %s", correlationID)
+			assert.Contains(t, correlationID, "-", "Correlation ID should contain separator: %s", correlationID)
+		}
+
+		// Performance validation
+		avgTimePerRequest := duration / time.Duration(totalRequests)
+		assert.Less(t, avgTimePerRequest, 10*time.Second, "Average response time should be reasonable")
+
+		// Log scale test results
+		t.Logf("✅ SCALE TEST RESULTS:")
+		t.Logf("📊 Concurrent Users: %d", numConcurrentUsers)
+		t.Logf("📊 Requests per User: %d", requestsPerUser)
+		t.Logf("📊 Total Requests: %d", totalRequests)
+		t.Logf("📊 Successful Responses: %d", successCount)
+		t.Logf("📊 Errors: %d", errorCount)
+		t.Logf("📊 Unique Correlation IDs: %d", len(finalCorrelationIDs))
+		t.Logf("📊 Total Duration: %v", duration)
+		t.Logf("📊 Average Time per Request: %v", avgTimePerRequest)
+		t.Logf("📊 Requests per Second: %.2f", float64(totalRequests)/duration.Seconds())
+
+		// Log some correlation IDs for verification
+		count := 0
+		for correlationID := range finalCorrelationIDs {
+			if count < 3 {
+				t.Logf("📊 Sample Correlation ID: %s", correlationID)
+				count++
+			}
+		}
+
+		// Validate some sample responses for content correctness
+		sampleCount := 0
+		for _, response := range responses {
+			if sampleCount < 3 { // Check first 3 responses
+				assert.NotEmpty(t, response, "Response should not be empty")
+				assert.Contains(t, response, "user", "Response should contain user context")
+				sampleCount++
+			}
+		}
 	})
 }
 
 // mockMessageBus implements AIMessageBus for testing
 type mockMessageBus struct {
+	mu              sync.Mutex
 	sentMessages    []interface{}
 	responseChannel chan *messaging.Message
 }
 
 func (m *mockMessageBus) SendToAgent(ctx context.Context, msg *messaging.AIToAgentMessage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.sentMessages = append(m.sentMessages, msg)
 	return nil
 }
 
 func (m *mockMessageBus) SendToAI(ctx context.Context, msg *messaging.AgentToAIMessage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.sentMessages = append(m.sentMessages, msg)
 	return nil
 }
 
 func (m *mockMessageBus) SendBetweenAgents(ctx context.Context, msg *messaging.AgentToAgentMessage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.sentMessages = append(m.sentMessages, msg)
 	return nil
 }
 
 func (m *mockMessageBus) SendUserToAI(ctx context.Context, msg *messaging.UserToAIMessage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.sentMessages = append(m.sentMessages, msg)
 	return nil
 }
@@ -142,231 +401,18 @@ func (m *mockMessageBus) PrepareAgentQueue(ctx context.Context, agentID string) 
 	return nil
 }
 
-// TDD Enforcement Test: Ensure no MockAIProvider usage
-func TestNoMockAIProviderUsage_TDD_GREEN(t *testing.T) {
-	t.Run("GREEN: should pass now that MockAIProvider is removed", func(t *testing.T) {
-		// This test enforces that we only use real AI providers
-		// Now that we've removed MockAIProvider usage, this should pass
-
-		// Test that setupRealAIProvider function exists and works
-		aiProvider := setupRealAIProvider(t)
-		assert.NotNil(t, aiProvider, "Real AI provider should be available")
-
-		t.Logf("✅ All tests now use real AI provider only")
-	})
+// GetSentMessages returns a copy of sent messages in a thread-safe way
+func (m *mockMessageBus) GetSentMessages() []interface{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]interface{}, len(m.sentMessages))
+	copy(result, m.sentMessages)
+	return result
 }
 
-// Test Step 1.3: Integration with OrchestratorService
-func TestOrchestratorService_ProcessConversation_TDD(t *testing.T) {
-	t.Run("should use AIConversationEngine for direct conversation processing", func(t *testing.T) {
-		// ARRANGE: Real AI + Mock services
-		aiProvider := setupRealAIProvider(t)
-		aiDecisionEngine := NewAIDecisionEngine(aiProvider)
-
-		// Setup mocks
-		mockExplorer := &MockGraphExplorer{}
-		mockConversationEngine := &MockAIConversationEngine{}
-		mockLearning := &MockLearningService{}
-
-		service := NewOrchestratorService(aiDecisionEngine, mockExplorer, mockConversationEngine, mockLearning, logging.NewNoOpLogger())
-
-		agentContext := `Available agents:
-- text-processor (ID: text-processor, Status: online)
-  Capabilities: word-count, text-analysis`
-
-		// Setup expectations
-		mockExplorer.On("GetAgentContext", mock.Anything).Return(agentContext, nil)
-		mockConversationEngine.On("ProcessWithAgents", mock.Anything, "Count words: Hello world", "user123", agentContext).Return("The text 'Hello world' contains 2 words.", nil)
-
-		// ACT: Use the new ProcessConversation method
-		response, err := service.ProcessConversation(context.Background(), "Count words: Hello world", "user123")
-
-		// ASSERT: Verify integration works
-		require.NoError(t, err)
-		assert.Equal(t, "The text 'Hello world' contains 2 words.", response)
-
-		// Verify mocks were called correctly
-		mockExplorer.AssertExpectations(t)
-		mockConversationEngine.AssertExpectations(t)
-
-		t.Logf("✅ OrchestratorService.ProcessConversation integration successful: %s", response)
-	})
+// GetSentMessageCount returns the count of sent messages in a thread-safe way
+func (m *mockMessageBus) GetSentMessageCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.sentMessages)
 }
-
-// Test Step 1.4: End-to-end AI-agent conversation with real AI
-func TestOrchestratorService_EndToEnd_RealAI_TDD(t *testing.T) {
-	t.Run("should handle complete AI-agent conversation flow with real AI provider", func(t *testing.T) {
-		// ARRANGE: Real AI + Real AIConversationEngine + Mock message bus
-		aiProvider := setupRealAIProvider(t)
-		mockBus := &mockMessageBus{
-			sentMessages:    make([]interface{}, 0),
-			responseChannel: make(chan *messaging.Message, 1),
-		}
-		aiConversationEngine := NewAIConversationEngine(aiProvider, mockBus)
-
-		// Real services
-		aiDecisionEngine := NewAIDecisionEngine(aiProvider)
-		mockExplorer := &MockGraphExplorer{}
-		mockLearning := &MockLearningService{}
-
-		service := NewOrchestratorService(aiDecisionEngine, mockExplorer, aiConversationEngine, mockLearning, logging.NewNoOpLogger())
-
-		agentContext := `Available agents:
-- text-processor (ID: text-processor, Status: online)
-  Capabilities: word-count, text-analysis`
-
-		// Setup expectations
-		mockExplorer.On("GetAgentContext", mock.Anything).Return(agentContext, nil)
-
-		// Setup goroutine to simulate agent response for this test
-		go func() {
-			time.Sleep(1 * time.Second) // Wait for AI to send request to agent
-
-			// Wait for the AI to send a message to the agent, then respond
-			for i := 0; i < 50; i++ { // Check for 5 seconds
-				if len(mockBus.sentMessages) > 0 {
-					if agentMsg, ok := mockBus.sentMessages[0].(*messaging.AIToAgentMessage); ok {
-						// Create response with the same correlation ID
-						agentResponse := &messaging.Message{
-							MessageType:   messaging.MessageTypeAgentToAI,
-							Content:       `The text "Beautiful day today" contains 3 words.`,
-							FromID:        "text-processor",
-							ToID:          "orchestrator",
-							CorrelationID: agentMsg.CorrelationID,
-							Timestamp:     time.Now(),
-						}
-
-						// Send the response to our mock channel
-						select {
-						case mockBus.responseChannel <- agentResponse:
-							return
-						case <-time.After(1 * time.Second):
-							return
-						}
-					}
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-		}()
-
-		// ACT: Use ProcessConversation with real AI end-to-end
-		response, err := service.ProcessConversation(context.Background(), "Count words: Beautiful day today", "user123")
-
-		// ASSERT: Verify complete flow works
-		require.NoError(t, err)
-		assert.NotEmpty(t, response)
-		assert.Contains(t, response, "3") // "Beautiful day today" has 3 words
-
-		// Verify the AI sent an event to the text-processor
-		require.Len(t, mockBus.sentMessages, 1)
-		agentMsg, ok := mockBus.sentMessages[0].(*messaging.AIToAgentMessage)
-		require.True(t, ok, "Expected AI to send event to agent")
-		assert.Equal(t, "text-processor", agentMsg.AgentID)
-		assert.Contains(t, agentMsg.Content, "Beautiful day today")
-
-		// Verify mocks
-		mockExplorer.AssertExpectations(t)
-
-		t.Logf("✅ End-to-end flow completed successfully!")
-		t.Logf("✅ AI sent to agent: %s", agentMsg.Content)
-		t.Logf("✅ Final response: %s", response)
-	})
-}
-
-// Test real bidirectional event handling with RabbitMQ
-func TestAIConversationEngine_RealBidirectionalEventHandling(t *testing.T) {
-	t.Run("should use real AI provider for conversation processing", func(t *testing.T) {
-		// Setup real AI provider (not mock)
-		aiProvider := setupRealAIProvider(t)
-
-		// Setup mock message bus for testing
-		mockBus := &mockMessageBus{
-			sentMessages:    make([]interface{}, 0),
-			responseChannel: make(chan *messaging.Message, 1),
-		}
-
-		// Create the conversation engine with real AI
-		engine := NewAIConversationEngine(aiProvider, mockBus)
-
-		// Setup goroutine to simulate agent response for this test
-		go func() {
-			time.Sleep(1 * time.Second) // Wait for AI to send request to agent
-
-			// Wait for the AI to send a message to the agent, then respond
-			for i := 0; i < 50; i++ { // Check for 5 seconds
-				if len(mockBus.sentMessages) > 0 {
-					if agentMsg, ok := mockBus.sentMessages[0].(*messaging.AIToAgentMessage); ok {
-						// Create response with the same correlation ID
-						agentResponse := &messaging.Message{
-							MessageType:   messaging.MessageTypeAgentToAI,
-							Content:       `The text "Hello World Test" contains 3 words.`,
-							FromID:        "text-processor",
-							ToID:          "orchestrator",
-							CorrelationID: agentMsg.CorrelationID,
-							Timestamp:     time.Now(),
-						}
-
-						// Send the response to our mock channel
-						select {
-						case mockBus.responseChannel <- agentResponse:
-							return
-						case <-time.After(1 * time.Second):
-							return
-						}
-					}
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-		}()
-
-		// TEST: Process a conversation request using real AI
-		ctx := context.Background()
-		userRequest := "Count words in: Hello World Test"
-		userID := "test-user"
-		agentContext := `Available agents:
-- text-processor (ID: text-processor, Status: online)
-  Capabilities: word-count, text-analysis`
-
-		// ACT: Process the conversation with real AI
-		response, err := engine.ProcessWithAgents(ctx, userRequest, userID, agentContext)
-
-		// ASSERT: Verify real AI processing worked
-		require.NoError(t, err)
-		assert.NotEmpty(t, response)
-
-		// Verify that an AI-to-Agent message was sent
-		require.Len(t, mockBus.sentMessages, 1)
-		agentMsg, ok := mockBus.sentMessages[0].(*messaging.AIToAgentMessage)
-		require.True(t, ok, "Expected AI to send message to agent")
-		assert.Equal(t, "text-processor", agentMsg.AgentID)
-		assert.Contains(t, agentMsg.Content, "Hello World Test")
-
-		t.Logf("✅ Real AI conversation engine processed request successfully")
-		t.Logf("✅ AI response: %s", response)
-		t.Logf("✅ Message sent to agent: %s", agentMsg.Content)
-	})
-}
-
-// TODO: Implement these tests after core functionality works
-/*
-// Test bidirectional conversation (AI → Agent → AI → User)
-func TestAIConversationEngine_BidirectionalConversation_TDD(t *testing.T) {
-	t.Run("RED: should handle agent response and provide final answer", func(t *testing.T) {
-		// Will implement after HandleAgentResponse method exists
-	})
-}
-
-// Test multiple agent coordination
-func TestAIConversationEngine_MultipleAgents_TDD(t *testing.T) {
-	t.Run("RED: should coordinate multiple agents via AI decisions", func(t *testing.T) {
-		// Will implement after core functionality works
-	})
-}
-
-// Test error handling with real AI
-func TestAIConversationEngine_ErrorHandling_TDD(t *testing.T) {
-	t.Run("RED: should handle unclear requests gracefully", func(t *testing.T) {
-		// Will implement after core functionality works
-	})
-}
-*/

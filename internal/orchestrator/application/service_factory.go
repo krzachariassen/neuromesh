@@ -11,11 +11,12 @@ import (
 
 // ServiceFactory creates properly wired orchestrator service instances
 type ServiceFactory struct {
-	logger       logging.Logger
-	graph        graph.Graph
-	messageBus   messaging.MessageBus
-	aiMessageBus messaging.AIMessageBus
-	aiProvider   aiDomain.AIProvider
+	logger             logging.Logger
+	graph              graph.Graph
+	messageBus         messaging.MessageBus
+	aiMessageBus       messaging.AIMessageBus
+	aiProvider         aiDomain.AIProvider
+	correlationTracker *infrastructure.CorrelationTracker
 }
 
 // NewServiceFactory creates a new service factory
@@ -46,7 +47,7 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	// Create all application services with proper dependencies
 	aiDecisionEngine := NewAIDecisionEngine(sf.aiProvider)
 	graphExplorer := NewGraphExplorer(agentService)
-	aiConversationEngine := NewAIConversationEngine(sf.aiProvider, sf.aiMessageBus)
+	aiConversationEngine := NewAIConversationEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker)
 	learningService := NewLearningService(conversationService)
 
 	// Wire everything together

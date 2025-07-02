@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	aiDomain "neuromesh/internal/ai/domain"
 	"neuromesh/internal/messaging"
+	"neuromesh/internal/orchestrator/infrastructure"
 )
 
 const (
@@ -18,69 +20,34 @@ const (
 
 	// Event timeout
 	DefaultEventTimeout = 30 * time.Second
-
-	// Event timeout configuration
-	TextProcessorAgentID = "text-processor"
 )
 
-// AIConversationEngine orchestrates AI-native conversations with agents using events
-// This replaces the rigid ExecutionCoordinator with AI-mediated execution via RabbitMQ events
+// AIConversationEngine is a stateless, correlation-driven conversation engine
+// that supports concurrent conversations using correlation IDs for message routing
 type AIConversationEngine struct {
-	aiProvider       aiDomain.AIProvider
-	aiMessageBus     messaging.AIMessageBus
-	conversationID   string
-	responseChannel  <-chan *messaging.Message
-	subscriptionOnce sync.Once
-	channelMutex     sync.RWMutex
+	aiProvider         aiDomain.AIProvider
+	aiMessageBus       messaging.AIMessageBus
+	correlationTracker *infrastructure.CorrelationTracker
 }
 
-// NewAIConversationEngine creates a new AI conversation engine
-func NewAIConversationEngine(aiProvider aiDomain.AIProvider, aiMessageBus messaging.AIMessageBus) *AIConversationEngine {
-	engine := &AIConversationEngine{
-		aiProvider:   aiProvider,
-		aiMessageBus: aiMessageBus,
+// NewAIConversationEngine creates a new stateless AI conversation engine
+func NewAIConversationEngine(
+	aiProvider aiDomain.AIProvider,
+	aiMessageBus messaging.AIMessageBus,
+	correlationTracker *infrastructure.CorrelationTracker,
+) *AIConversationEngine {
+	return &AIConversationEngine{
+		aiProvider:         aiProvider,
+		aiMessageBus:       aiMessageBus,
+		correlationTracker: correlationTracker,
 	}
-
-	// Prepare queue for receiving agent responses
-	// Use a background context since this is initialization
-	ctx := context.Background()
-	if err := aiMessageBus.PrepareAgentQueue(ctx, "ai-orchestrator"); err != nil {
-		// Log error but don't fail - queue can be prepared later if needed
-		fmt.Printf("Warning: Failed to prepare orchestrator queue: %v\n", err)
-	}
-
-	return engine
-}
-
-// buildSystemPrompt creates the AI orchestration system prompt
-func (e *AIConversationEngine) buildSystemPrompt(agentContext string) string {
-	return fmt.Sprintf(`You are an AI orchestrator with access to these agents:
-
-%s
-
-You orchestrate using EVENTS. When you need an agent:
-
-1. Analyze user request
-2. Send event to appropriate agent
-3. Wait for agent response event
-4. Process response and decide next action
-5. Provide final response to user
-
-When calling an agent, respond EXACTLY with:
-%s
-Agent: [agent-id]
-Action: [capability-name]
-Content: [natural language instruction to agent]
-Intent: [what you want the agent to do]
-
-When ready to respond to user, respond with:
-%s
-[your response to the user]`, agentContext, EventPrefix, UserResponsePrefix)
 }
 
 // ProcessWithAgents handles AI-native execution with bidirectional agent communication via events
+// This is stateless and supports concurrent conversations using correlation IDs
 func (e *AIConversationEngine) ProcessWithAgents(ctx context.Context, userInput, userID, agentContext string) (string, error) {
-	e.conversationID = fmt.Sprintf("conv-%s-%d", userID, time.Now().Unix())
+	// Generate unique correlation ID for this conversation
+	correlationID := fmt.Sprintf("conv-%s-%s", userID, uuid.New().String())
 
 	// Get AI decision using improved system prompt
 	systemPrompt := e.buildSystemPrompt(agentContext)
@@ -94,7 +61,7 @@ func (e *AIConversationEngine) ProcessWithAgents(ctx context.Context, userInput,
 
 	// Check if AI wants to send event to an agent
 	if strings.Contains(response, EventPrefix) {
-		return e.handleAgentEvent(ctx, response, userInput, userID, agentContext)
+		return e.handleAgentEvent(ctx, response, userInput, userID, agentContext, correlationID)
 	}
 
 	// Extract direct user response
@@ -107,19 +74,20 @@ func (e *AIConversationEngine) ProcessWithAgents(ctx context.Context, userInput,
 }
 
 // handleAgentEvent processes AI's decision to send event to an agent
-func (e *AIConversationEngine) handleAgentEvent(ctx context.Context, aiResponse, originalRequest, userID, agentContext string) (string, error) {
+func (e *AIConversationEngine) handleAgentEvent(ctx context.Context, aiResponse, originalRequest, userID, agentContext, correlationID string) (string, error) {
+
 	// Parse AI's agent event instruction
 	agentID := e.extractSection(aiResponse, "Agent:")
 	action := e.extractSection(aiResponse, "Action:")
 	content := e.extractSection(aiResponse, "Content:")
 	intent := e.extractSection(aiResponse, "Intent:")
 
-	// Create AI-to-Agent event message
+	// Create AI-to-Agent event message with correlation ID
 	eventMsg := &messaging.AIToAgentMessage{
 		AgentID:       agentID,
 		Content:       content,
 		Intent:        intent,
-		CorrelationID: e.conversationID,
+		CorrelationID: correlationID,
 		Context: map[string]interface{}{
 			"original_request": originalRequest,
 			"user_id":          userID,
@@ -128,20 +96,89 @@ func (e *AIConversationEngine) handleAgentEvent(ctx context.Context, aiResponse,
 		Timeout: DefaultEventTimeout,
 	}
 
-	// Send event to agent via RabbitMQ
+	// Send event to agent via message bus
 	err := e.aiMessageBus.SendToAgent(ctx, eventMsg)
 	if err != nil {
 		return "", fmt.Errorf("failed to send event to agent %s: %w", agentID, err)
 	}
 
-	// Wait for real agent response via RabbitMQ events (Step 1.6: Real Bidirectional Events)
-	agentResponse, err := e.waitForAgentResponse(ctx, eventMsg.CorrelationID)
+	// Wait for agent response using correlation tracker (stateless)
+	agentResponse, err := e.waitForAgentResponseWithCorrelation(ctx, correlationID, userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to receive agent response: %w", err)
 	}
 
-	// Let AI process the agent response via event
+	// Let AI process the agent response
 	return e.processAgentEventResponse(ctx, agentResponse, originalRequest, userID, agentContext)
+}
+
+// waitForAgentResponseWithCorrelation waits for an agent response using correlation tracking
+func (e *AIConversationEngine) waitForAgentResponseWithCorrelation(ctx context.Context, correlationID, userID string) (*messaging.AgentToAIMessage, error) {
+
+	// Register request with correlation tracker
+	timeout := 30 * time.Second
+	responseChan := e.correlationTracker.RegisterRequest(correlationID, userID, timeout)
+
+	// Subscribe to the same channel as the original working engine
+	responseChannel, err := e.aiMessageBus.Subscribe(ctx, "ai-orchestrator")
+	if err != nil {
+		e.correlationTracker.CleanupRequest(correlationID)
+		return nil, fmt.Errorf("failed to subscribe for agent responses: %w", err)
+	}
+
+	// Start listening for agent responses and route them through correlation tracker
+	go func() {
+		defer func() {
+			// Clean up subscription when done
+			e.correlationTracker.CleanupRequest(correlationID)
+		}()
+
+		for {
+			select {
+			case msg, ok := <-responseChannel:
+				if !ok {
+					// Channel is closed, stop listening
+					return
+				}
+				if msg != nil {
+					if msg.MessageType == messaging.MessageTypeAgentToAI && msg.CorrelationID == correlationID {
+						// Convert to AgentToAIMessage and route through correlation tracker
+						agentMsg := &messaging.AgentToAIMessage{
+							AgentID:       msg.FromID,
+							Content:       msg.Content,
+							CorrelationID: msg.CorrelationID,
+							MessageType:   msg.MessageType,
+						}
+
+						if e.correlationTracker.RouteResponse(agentMsg) {
+						} else {
+						}
+						return
+					} else {
+						// Message doesn't match correlation ID, continue waiting
+					}
+				}
+				// Note: removed the nil message log since it's just noise from closed channels
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// Wait for response or timeout
+	select {
+	case response := <-responseChan:
+		if response != nil {
+			return response, nil
+		}
+		return nil, fmt.Errorf("received nil response for correlation %s", correlationID)
+	case <-ctx.Done():
+		e.correlationTracker.CleanupRequest(correlationID)
+		return nil, ctx.Err()
+	case <-time.After(timeout):
+		e.correlationTracker.CleanupRequest(correlationID)
+		return nil, fmt.Errorf("timeout waiting for agent response (correlation: %s)", correlationID)
+	}
 }
 
 // processAgentEventResponse lets AI decide what to do with agent response event
@@ -172,95 +209,96 @@ If ready to respond to user, respond with:
 
 	userPrompt := "Process the agent response event and decide next action."
 
+	// Get AI decision on how to proceed
 	response, err := e.aiProvider.CallAI(ctx, systemPrompt, userPrompt)
 	if err != nil {
-		return "", fmt.Errorf("AI call failed: %w", err)
+		return "", fmt.Errorf("AI processing of agent response failed: %w", err)
 	}
 
-	// Check if AI wants to send event to another agent
+	// Check if AI wants to send another event to an agent
 	if strings.Contains(response, EventPrefix) {
 		// For now, just indicate multi-agent coordination
 		return "AI is coordinating multiple agents via events: " + response, nil
 	}
 
-	// Extract user response
-	return e.extractUserResponse(response), nil
-}
-
-// ensureSubscription ensures we have a single persistent subscription channel
-func (e *AIConversationEngine) ensureSubscription(ctx context.Context) error {
-	e.channelMutex.Lock()
-	defer e.channelMutex.Unlock()
-
-	if e.responseChannel == nil {
-		var err error
-		e.responseChannel, err = e.aiMessageBus.Subscribe(ctx, "ai-orchestrator")
-		if err != nil {
-			return fmt.Errorf("failed to create subscription: %w", err)
-		}
-	}
-	return nil
-}
-
-// waitForAgentResponse waits for a real agent response via RabbitMQ events
-func (e *AIConversationEngine) waitForAgentResponse(ctx context.Context, correlationID string) (*messaging.AgentToAIMessage, error) {
-	// Ensure we have a persistent subscription
-	if err := e.ensureSubscription(ctx); err != nil {
-		return nil, err
+	// Extract final user response
+	if strings.Contains(response, UserResponsePrefix) {
+		return e.extractUserResponse(response), nil
 	}
 
-	// Create timeout context
-	timeoutCtx, cancel := context.WithTimeout(ctx, DefaultEventTimeout)
-	defer cancel()
-
-	// Wait for agent response with timeout
-	for {
-		select {
-		case message := <-e.responseChannel:
-			// Check if this message is a response to our request
-			if message != nil && message.CorrelationID == correlationID {
-				// Parse the message as an agent response
-				agentResponse, err := e.parseAgentResponseMessage(message)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse agent response: %w", err)
-				}
-				return agentResponse, nil
-			}
-			// If it's not our correlation ID, continue waiting
-		case <-timeoutCtx.Done():
-			return nil, fmt.Errorf("timeout waiting for agent response (correlation ID: %s)", correlationID)
-		}
-	}
+	// Fallback - return AI response as-is
+	return response, nil
 }
 
-// parseAgentResponseMessage converts a generic message to AgentToAIMessage
-func (e *AIConversationEngine) parseAgentResponseMessage(message *messaging.Message) (*messaging.AgentToAIMessage, error) {
-	// For now, create a basic agent response from the message
-	// In a full implementation, this would parse JSON payload
-	return &messaging.AgentToAIMessage{
-		AgentID:       message.FromID,
-		Content:       message.Content,
-		MessageType:   messaging.MessageTypeResponse,
-		CorrelationID: message.CorrelationID,
-		Context:       map[string]interface{}{"status": "completed"},
-		NeedsHelp:     false,
-	}, nil
+// buildSystemPrompt creates the system prompt for AI decision making
+func (e *AIConversationEngine) buildSystemPrompt(agentContext string) string {
+	prompt := fmt.Sprintf(`You are an AI orchestrator with access to these agents:
+
+%s
+
+You orchestrate using EVENTS. When you need an agent:
+
+1. Analyze user request
+2. Send event to appropriate agent
+3. Wait for agent response event
+4. Process response and decide next action
+5. Provide final response to user
+
+When calling an agent, respond EXACTLY with:
+%s
+Agent: [agent-id]
+Action: [capability-name]
+Content: [natural language instruction to agent]
+Intent: [what you want the agent to do]
+
+When ready to respond to user, respond with:
+%s
+[your response to the user]`, agentContext, EventPrefix, UserResponsePrefix)
+
+	return prompt
 }
 
-// Helper methods
-func (e *AIConversationEngine) extractSection(text, prefix string) string {
-	lines := strings.Split(text, "\n")
+// extractSection extracts a named section from AI response
+func (e *AIConversationEngine) extractSection(response, sectionName string) string {
+	lines := strings.Split(response, "\n")
+	var sectionContent strings.Builder
+	inSection := false
+
 	for _, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), prefix))
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, sectionName) {
+			inSection = true
+			// Extract content after the colon
+			if colonIndex := strings.Index(line, ":"); colonIndex != -1 && len(line) > colonIndex+1 {
+				sectionContent.WriteString(strings.TrimSpace(line[colonIndex+1:]))
+			}
+			continue
+		}
+		if inSection {
+			if strings.Contains(line, ":") && (strings.HasPrefix(line, "Agent:") || strings.HasPrefix(line, "Action:") || strings.HasPrefix(line, "Content:") || strings.HasPrefix(line, "Intent:")) {
+				break
+			}
+			if line != "" {
+				if sectionContent.Len() > 0 {
+					sectionContent.WriteString(" ")
+				}
+				sectionContent.WriteString(line)
+			}
 		}
 	}
-	return ""
+
+	return sectionContent.String()
 }
 
+// extractUserResponse extracts the user response from AI output
 func (e *AIConversationEngine) extractUserResponse(response string) string {
 	if idx := strings.Index(response, UserResponsePrefix); idx != -1 {
-		return strings.TrimSpace(response[idx+len(UserResponsePrefix):])
+		userResponse := strings.TrimSpace(response[idx+len(UserResponsePrefix):])
+		// Remove any trailing sections that might be for internal processing
+		if endIdx := strings.Index(userResponse, "SEND_EVENT:"); endIdx != -1 {
+			userResponse = strings.TrimSpace(userResponse[:endIdx])
+		}
+		return userResponse
 	}
 	return response
 }

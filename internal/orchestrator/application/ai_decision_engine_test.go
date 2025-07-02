@@ -2,36 +2,17 @@ package application
 
 import (
 	"context"
-	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	aiInfrastructure "neuromesh/internal/ai/infrastructure"
-	"neuromesh/internal/logging"
 	"neuromesh/internal/orchestrator/domain"
+	"neuromesh/testHelpers"
+
+	"github.com/stretchr/testify/assert"
 )
-
-// setupRealAIProvider creates a real OpenAI provider for testing
-func setupRealAIProvider(t *testing.T) *aiInfrastructure.OpenAIProvider {
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		t.Skip("OPENAI_API_KEY environment variable not set, skipping AI provider tests")
-	}
-
-	config := aiInfrastructure.DefaultOpenAIConfig()
-	config.APIKey = apiKey
-	config.Model = "gpt-4.1-mini" // Use faster model for tests
-	config.MaxTokens = 1000       // Limit tokens for faster tests
-
-	logger := logging.NewNoOpLogger() // Use no-op logger for tests
-	provider := aiInfrastructure.NewOpenAIProvider(config, logger)
-
-	return provider
-}
 
 func TestAIDecisionEngine_ExploreAndAnalyze(t *testing.T) {
 	t.Run("should analyze user request with agent context using real AI", func(t *testing.T) {
-		aiProvider := setupRealAIProvider(t)
+		aiProvider := testHelpers.SetupRealAIProvider(t)
 		engine := NewAIDecisionEngine(aiProvider)
 
 		agentContext := "Agent: deploy-agent | Status: available | Capabilities: deploy, test"
@@ -57,7 +38,7 @@ func TestAIDecisionEngine_ExploreAndAnalyze(t *testing.T) {
 
 func TestAIDecisionEngine_MakeDecision(t *testing.T) {
 	t.Run("should make decision based on analysis using real AI", func(t *testing.T) {
-		aiProvider := setupRealAIProvider(t)
+		aiProvider := testHelpers.SetupRealAIProvider(t)
 		engine := NewAIDecisionEngine(aiProvider)
 
 		// Create a clear analysis that should result in execute decision
@@ -86,7 +67,7 @@ func TestAIDecisionEngine_MakeDecision(t *testing.T) {
 	})
 
 	t.Run("should handle low confidence request appropriately", func(t *testing.T) {
-		aiProvider := setupRealAIProvider(t)
+		aiProvider := testHelpers.SetupRealAIProvider(t)
 		engine := NewAIDecisionEngine(aiProvider)
 
 		// Create an unclear analysis
