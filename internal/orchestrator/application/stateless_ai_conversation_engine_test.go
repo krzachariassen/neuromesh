@@ -124,8 +124,8 @@ func TestStatelessAIConversationEngine_TDD(t *testing.T) {
 			response, err = engine.ProcessWithAgents(ctx, "Count the words in this text: Hello world testing", "user123", agentContext)
 		}()
 
-		// Wait for agent message to be sent and capture correlation ID
-		time.Sleep(500 * time.Millisecond)
+		// Wait for agent message to be sent and capture correlation ID  
+		time.Sleep(2 * time.Second) // Increased from 500ms to 2s to allow AI call to complete
 		require.Greater(t, len(mockBus.sentMessages), 0, "Should have sent message to agent")
 
 		if agentMsg, ok := mockBus.sentMessages[0].(*messaging.AIToAgentMessage); ok {
@@ -157,6 +157,10 @@ func TestStatelessAIConversationEngine_TDD(t *testing.T) {
 
 		// ASSERT
 		require.NoError(t, err, "Should handle correlated response")
-		assert.Contains(t, response, "Correlation test response", "Should include agent response")
+		assert.NotEmpty(t, response, "Should have a response")
+		// The AI should process the agent response and provide a meaningful answer
+		// (not just echo the mock response)
+		assert.Contains(t, response, "3", "Should include word count result")
+		t.Logf("✅ Final AI response: %s", response)
 	})
 }

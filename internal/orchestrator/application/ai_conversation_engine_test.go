@@ -122,8 +122,8 @@ func (m *mockMessageBus) SendUserToAI(ctx context.Context, msg *messaging.UserTo
 }
 
 func (m *mockMessageBus) Subscribe(ctx context.Context, participantID string) (<-chan *messaging.Message, error) {
-	// If subscribing as orchestrator and we have a response channel, return it
-	if participantID == "orchestrator" && m.responseChannel != nil {
+	// If subscribing as orchestrator or ai-orchestrator and we have a response channel, return it
+	if (participantID == "orchestrator" || participantID == "ai-orchestrator") && m.responseChannel != nil {
 		return m.responseChannel, nil
 	}
 
