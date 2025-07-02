@@ -162,7 +162,7 @@ func TestProtobufIntegration_TDD(t *testing.T) {
 				if !scenario.expectError {
 					// Mock successful registration
 					mockRegistry.On("RegisterAgent", mock.Anything, mock.AnythingOfType("*domain.Agent")).Return(nil).Once()
-					// Mock successful queue preparation  
+					// Mock successful queue preparation
 					mockMessageBus.On("PrepareAgentQueue", mock.Anything, mock.AnythingOfType("string")).Return(nil).Once()
 				}
 
