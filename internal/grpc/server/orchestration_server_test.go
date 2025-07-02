@@ -51,6 +51,9 @@ func TestOrchestrationServer_RegisterAgent_Success(t *testing.T) {
 			len(agent.Capabilities) == 2
 	})).Return(nil)
 
+	// Mock expectation for PrepareAgentQueue
+	mockBus.On("PrepareAgentQueue", mock.Anything, "test-agent").Return(nil)
+
 	// Execute
 	resp, err := server.RegisterAgent(context.Background(), req)
 
@@ -62,6 +65,7 @@ func TestOrchestrationServer_RegisterAgent_Success(t *testing.T) {
 
 	// Verify mock was called
 	mockRegistry.AssertExpectations(t)
+	mockBus.AssertExpectations(t)
 }
 
 func TestOrchestrationServer_RegisterAgent_ValidationFailure(t *testing.T) {
