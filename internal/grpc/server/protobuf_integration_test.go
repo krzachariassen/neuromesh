@@ -50,6 +50,9 @@ func TestProtobufIntegration_TDD(t *testing.T) {
 				metadata["health_check"] == "true"
 		})).Return(nil)
 
+		// Mock the PrepareAgentQueue call
+		mockMessageBus.On("PrepareAgentQueue", mock.Anything, "integration-test-agent").Return(nil)
+
 		registerRequest := &pb.RegisterAgentRequest{
 			AgentId: "integration-test-agent",
 			Name:    "Integration Test Agent",
@@ -73,6 +76,7 @@ func TestProtobufIntegration_TDD(t *testing.T) {
 
 		// Verify the mock was called with properly converted metadata
 		mockRegistry.AssertExpectations(t)
+		mockMessageBus.AssertExpectations(t)
 	})
 
 	t.Run("should_handle_agent_communication_workflow", func(t *testing.T) {
@@ -158,6 +162,8 @@ func TestProtobufIntegration_TDD(t *testing.T) {
 				if !scenario.expectError {
 					// Mock successful registration
 					mockRegistry.On("RegisterAgent", mock.Anything, mock.AnythingOfType("*domain.Agent")).Return(nil).Once()
+					// Mock successful queue preparation  
+					mockMessageBus.On("PrepareAgentQueue", mock.Anything, mock.AnythingOfType("string")).Return(nil).Once()
 				}
 
 				// ACT
