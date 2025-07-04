@@ -12,9 +12,10 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "github.com/ztdp/agents/text-processor/proto/orchestration"
+	pb "github.com/ztdp/agents/text-processor/proto/api"
 )
 
 // Config holds agent configuration
@@ -59,12 +60,20 @@ func (a *AINativeAgent) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to register: %w", err)
 	}
 
-	// Start conversation stream for receiving instructions
+	// Start dedicated infrastructure processes (heartbeat, status)
+	if err := a.StartInfrastructure(ctx); err != nil {
+		return fmt.Errorf("failed to start infrastructure: %w", err)
+	}
+
+	// Start AI conversation stream (separate from infrastructure)
 	if err := a.startConversationStream(ctx); err != nil {
-		return fmt.Errorf("failed to start conversation stream: %w", err)
+		return fmt.Errorf("failed to start AI conversation stream: %w", err)
 	}
 
 	log.Printf("✅ AI-native text processing agent started successfully")
+	log.Printf("🎯 Agent %s ready for AI instructions!", a.config.AgentID)
+	log.Printf("🔗 Connected to orchestrator at %s", a.config.OrchestratorAddress)
+	log.Printf("🤖 Capabilities: word-count, text-analysis, character-count")
 	return nil
 }
 
@@ -270,77 +279,23 @@ func (a *AINativeAgent) createCompletionMessage(instructionID, correlationID, co
 	return completion
 }
 
-// StartHeartbeat starts sending heartbeats to the orchestrator every 30 seconds
+// Legacy heartbeat methods - DEPRECATED in favor of dedicated infrastructure processes
+// StartHeartbeat - DEPRECATED: Use StartInfrastructure() instead
 func (a *AINativeAgent) StartHeartbeat(ctx context.Context, notificationChan chan<- bool) error {
-	// Start heartbeat goroutine regardless of connection status
-	// In production, this should be called after connection is established
-	go a.heartbeatLoop(ctx, notificationChan)
-
-	return nil
+	log.Printf("⚠️ DEPRECATED: StartHeartbeat called - use StartInfrastructure() instead")
+	// For backward compatibility, start the infrastructure
+	return a.StartInfrastructure(ctx)
 }
 
-// heartbeatLoop runs the actual heartbeat loop in a goroutine
-func (a *AINativeAgent) heartbeatLoop(ctx context.Context, notificationChan chan<- bool) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+// Legacy heartbeat methods - REMOVED in favor of dedicated infrastructure processes
 
-	log.Printf("💓 Starting heartbeat loop for agent %s", a.config.AgentID)
-
-	// Send immediate first heartbeat
-	a.sendHeartbeat(ctx, notificationChan)
-
-	for {
-		select {
-		case <-ticker.C:
-			a.sendHeartbeat(ctx, notificationChan)
-		case <-ctx.Done():
-			log.Printf("💓 Heartbeat loop stopped for agent %s", a.config.AgentID)
-			return
-		}
-	}
-}
-
-// sendHeartbeat sends a single heartbeat to the orchestrator
-func (a *AINativeAgent) sendHeartbeat(ctx context.Context, notificationChan chan<- bool) {
-	// Skip actual gRPC call if no connection (for testing)
-	if a.client != nil {
-		heartbeatReq := &pb.HeartbeatRequest{
-			AgentId:   a.config.AgentID,
-			SessionId: a.sessionID,
-			Status:    pb.AgentStatus_AGENT_STATUS_HEALTHY,
-		}
-
-		// Send heartbeat to orchestrator
-		_, err := a.client.Heartbeat(ctx, heartbeatReq)
-		if err != nil {
-			log.Printf("❌ Heartbeat failed for agent %s: %v", a.config.AgentID, err)
-			return
-		}
-
-		log.Printf("💓 Heartbeat sent for agent %s", a.config.AgentID)
-	} else {
-		// In test mode or when connection not established
-		log.Printf("💓 Heartbeat tick for agent %s (no connection)", a.config.AgentID)
-	}
-
-	// Notify test channel if provided
-	if notificationChan != nil {
-		select {
-		case notificationChan <- true:
-			// Notification sent successfully
-		default:
-			// Channel full or closed, continue without blocking
-		}
-	}
-}
-
-// processConversationMessage handles incoming conversation messages and returns appropriate responses
+// processConversationMessage handles ONLY AI conversation messages (instructions/completions)
 func (a *AINativeAgent) processConversationMessage(msg *pb.ConversationMessage) *pb.ConversationMessage {
-	log.Printf("📨 Processing conversation message: %s (type: %v)", msg.MessageId, msg.Type)
+	log.Printf("📨 Processing AI conversation message: %s (type: %v)", msg.MessageId, msg.Type)
 
 	switch msg.Type {
 	case pb.MessageType_MESSAGE_TYPE_INSTRUCTION:
-		// Process the instruction and create a completion response
+		// Process the AI instruction and create a completion response
 		result := a.ProcessInstruction(msg.Content)
 
 		// Create completion message using existing method
@@ -358,82 +313,159 @@ func (a *AINativeAgent) processConversationMessage(msg *pb.ConversationMessage) 
 			Timestamp:     completion.Timestamp,
 		}
 
-	case pb.MessageType_MESSAGE_TYPE_HEARTBEAT:
-		// Respond to heartbeat
-		log.Printf("💓 Received heartbeat message")
-		return &pb.ConversationMessage{
-			MessageId:     fmt.Sprintf("heartbeat-response-%d", time.Now().UnixNano()),
-			CorrelationId: msg.CorrelationId,
-			FromId:        a.config.AgentID,
-			ToId:          "orchestrator",
-			Type:          pb.MessageType_MESSAGE_TYPE_HEARTBEAT,
-			Content:       "Agent is healthy",
-			Timestamp:     timestamppb.Now(),
-		}
-
 	default:
-		log.Printf("⚠️ Unknown message type: %v", msg.Type)
+		log.Printf("⚠️ Unexpected message type in conversation stream: %v (infrastructure messages should use dedicated endpoints)", msg.Type)
 		return nil
 	}
 }
 
-// startConversationStream opens and maintains a conversation stream with the orchestrator
+// startConversationStream opens and maintains a PURE AI conversation stream
 func (a *AINativeAgent) startConversationStream(ctx context.Context) error {
-	log.Printf("🔄 Starting conversation stream for agent %s", a.config.AgentID)
+	log.Printf("🔄 Starting AI conversation stream for agent %s", a.config.AgentID)
 
-	// Open conversation stream
-	stream, err := a.client.OpenConversation(ctx)
+	// Create context with agent ID in metadata (no identification message needed!)
+	md := metadata.New(map[string]string{
+		"agent-id": a.config.AgentID,
+	})
+	streamCtx := metadata.NewOutgoingContext(ctx, md)
+
+	// Open conversation stream with agent ID in metadata
+	stream, err := a.client.OpenConversation(streamCtx)
 	if err != nil {
 		return fmt.Errorf("failed to open conversation stream: %v", err)
 	}
 
-	// Send initial identification message
-	identMsg := &pb.ConversationMessage{
-		MessageId:     fmt.Sprintf("ident-%d", time.Now().UnixNano()),
-		CorrelationId: "",
-		FromId:        a.config.AgentID,
-		ToId:          "orchestrator",
-		Type:          pb.MessageType_MESSAGE_TYPE_STATUS_UPDATE,
-		Content:       "Agent ready for instructions",
-		Timestamp:     timestamppb.Now(),
-	}
+	log.Printf("✅ AI conversation stream established for agent %s", a.config.AgentID)
 
-	if err := stream.Send(identMsg); err != nil {
-		return fmt.Errorf("failed to send identification message: %v", err)
-	}
-
-	log.Printf("✅ Conversation stream established for agent %s", a.config.AgentID)
-
-	// Listen for messages from orchestrator
+	// Listen ONLY for AI instruction messages (no identification message needed)
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("🛑 Conversation stream context cancelled for agent %s", a.config.AgentID)
+				log.Printf("🛑 AI conversation stream context cancelled for agent %s", a.config.AgentID)
 				return
 			default:
-				// Receive message from orchestrator
+				// Receive AI instruction from orchestrator
 				msg, err := stream.Recv()
 				if err != nil {
-					log.Printf("❌ Error receiving message from stream: %v", err)
+					log.Printf("❌ Error receiving AI message from stream: %v", err)
 					return
 				}
 
-				log.Printf("📨 Received message from orchestrator: %s", msg.MessageId)
+				log.Printf("🧠 Received AI instruction: %s", msg.MessageId)
 
-				// Process the message
+				// Process the AI instruction
 				response := a.processConversationMessage(msg)
 				if response != nil {
-					// Send response back to orchestrator
+					// Send completion response back to AI
 					if err := stream.Send(response); err != nil {
-						log.Printf("❌ Failed to send response: %v", err)
+						log.Printf("❌ Failed to send AI response: %v", err)
 						return
 					}
-					log.Printf("📤 Sent response: %s", response.MessageId)
+					log.Printf("🧠 Sent AI completion: %s", response.MessageId)
 				}
 			}
 		}
 	}()
 
 	return nil
+}
+
+// StartInfrastructure starts all dedicated infrastructure processes
+func (a *AINativeAgent) StartInfrastructure(ctx context.Context) error {
+	log.Printf("🔧 Starting infrastructure processes for agent %s", a.config.AgentID)
+
+	// Start heartbeat process
+	if err := a.startHeartbeatProcess(ctx); err != nil {
+		return fmt.Errorf("failed to start heartbeat process: %w", err)
+	}
+
+	// Start status monitoring process
+	if err := a.startStatusProcess(ctx); err != nil {
+		return fmt.Errorf("failed to start status process: %w", err)
+	}
+
+	log.Printf("✅ All infrastructure processes started for agent %s", a.config.AgentID)
+	return nil
+}
+
+// startHeartbeatProcess starts a dedicated heartbeat process using the dedicated endpoint
+func (a *AINativeAgent) startHeartbeatProcess(ctx context.Context) error {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		log.Printf("💓 Starting dedicated heartbeat process for agent %s", a.config.AgentID)
+
+		// Send immediate first heartbeat
+		a.sendInfrastructureHeartbeat(ctx)
+
+		for {
+			select {
+			case <-ticker.C:
+				a.sendInfrastructureHeartbeat(ctx)
+			case <-ctx.Done():
+				log.Printf("💓 Heartbeat process stopped for agent %s", a.config.AgentID)
+				return
+			}
+		}
+	}()
+
+	return nil
+}
+
+// startStatusProcess starts a dedicated status update process
+func (a *AINativeAgent) startStatusProcess(ctx context.Context) error {
+	go func() {
+		log.Printf("🔧 Starting dedicated status process for agent %s", a.config.AgentID)
+
+		// Send initial status
+		a.sendStatusUpdate(ctx, pb.AgentStatus_AGENT_STATUS_HEALTHY)
+
+		// Listen for status changes (for now, just healthy)
+		// In the future, this could monitor agent health and send updates
+		<-ctx.Done()
+		log.Printf("🔧 Status process stopped for agent %s", a.config.AgentID)
+	}()
+
+	return nil
+}
+
+// sendInfrastructureHeartbeat sends heartbeat using dedicated Heartbeat endpoint
+func (a *AINativeAgent) sendInfrastructureHeartbeat(ctx context.Context) {
+	if a.client != nil {
+		heartbeatReq := &pb.HeartbeatRequest{
+			AgentId:   a.config.AgentID,
+			SessionId: a.sessionID,
+			Status:    pb.AgentStatus_AGENT_STATUS_HEALTHY,
+		}
+
+		_, err := a.client.Heartbeat(ctx, heartbeatReq)
+		if err != nil {
+			log.Printf("❌ Infrastructure heartbeat failed for agent %s: %v", a.config.AgentID, err)
+			return
+		}
+
+		log.Printf("💓 Infrastructure heartbeat sent for agent %s", a.config.AgentID)
+	}
+}
+
+// sendStatusUpdate sends status using dedicated UpdateAgentStatus endpoint
+func (a *AINativeAgent) sendStatusUpdate(ctx context.Context, status pb.AgentStatus) {
+	if a.client != nil {
+		statusReq := &pb.UpdateAgentStatusRequest{
+			AgentId:   a.config.AgentID,
+			SessionId: a.sessionID,
+			Status:    status,
+			Timestamp: timestamppb.Now(),
+		}
+
+		_, err := a.client.UpdateAgentStatus(ctx, statusReq)
+		if err != nil {
+			log.Printf("❌ Status update failed for agent %s: %v", a.config.AgentID, err)
+			return
+		}
+
+		log.Printf("🔧 Status update sent for agent %s: %v", a.config.AgentID, status)
+	}
 }

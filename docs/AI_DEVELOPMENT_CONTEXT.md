@@ -221,15 +221,6 @@ type AgentToAIMessage struct {
 - **OpenAI API**: AI provider for decision making
 - **gRPC**: Agent communication protocol
 
-### Environment Variables
-```bash
-OPENAI_API_KEY=<your-openai-key>
-RABBITMQ_URL=amqp://localhost:5672
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=password
-```
-
 ## 🚀 Next Development Priorities
 
 ### Immediate (Current Sprint)

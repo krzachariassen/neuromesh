@@ -28,7 +28,7 @@ func NewService(g graph.Graph, logger logging.Logger) *Service {
 	}
 }
 
-// RegisterAgent registers a new agent
+// RegisterAgent registers a new agent or updates an existing offline agent
 func (s *Service) RegisterAgent(ctx context.Context, agent *domain.Agent) error {
 	if agent == nil {
 		return fmt.Errorf("agent cannot be nil")
@@ -70,39 +70,57 @@ func (s *Service) RegisterAgent(ctx context.Context, agent *domain.Agent) error 
 		"capabilities": capabilitiesJSON,
 		"last_seen":    agent.LastSeen.UTC(),
 		"metadata":     metadataJSON,
-		"created_at":   time.Now().UTC(),
 		"updated_at":   time.Now().UTC(),
 	}
 
-	err := s.graph.AddNode(ctx, "agent", agent.ID, properties)
-	if err != nil {
-		if s.logger != nil {
-			s.logger.Error("Failed to register agent", err, "agent_id", agent.ID)
+	// Check if agent already exists
+	existingAgent, err := s.GetAgent(ctx, agent.ID)
+	if err == nil && existingAgent != nil {
+		// Agent exists, update it (preserving created_at)
+		err = s.graph.UpdateNode(ctx, "agent", agent.ID, properties)
+		if err != nil {
+			if s.logger != nil {
+				s.logger.Error("Failed to update existing agent", err, "agent_id", agent.ID)
+			}
+			return fmt.Errorf("failed to update existing agent: %w", err)
 		}
-		return fmt.Errorf("failed to register agent: %w", err)
-	}
-
-	if s.logger != nil {
-		s.logger.Info("Agent registered successfully", "agent_id", agent.ID, "name", agent.Name)
+		if s.logger != nil {
+			s.logger.Info("Agent updated successfully", "agent_id", agent.ID, "name", agent.Name)
+		}
+	} else {
+		// Agent doesn't exist, create new one
+		properties["created_at"] = time.Now().UTC()
+		err = s.graph.AddNode(ctx, "agent", agent.ID, properties)
+		if err != nil {
+			if s.logger != nil {
+				s.logger.Error("Failed to register agent", err, "agent_id", agent.ID)
+			}
+			return fmt.Errorf("failed to register agent: %w", err)
+		}
+		if s.logger != nil {
+			s.logger.Info("Agent registered successfully", "agent_id", agent.ID, "name", agent.Name)
+		}
 	}
 
 	return nil
 }
 
-// UnregisterAgent removes an agent from the registry
+// UnregisterAgent marks an agent as offline instead of deleting it
 func (s *Service) UnregisterAgent(ctx context.Context, agentID string) error {
 	if agentID == "" {
 		return fmt.Errorf("agent ID cannot be empty")
 	}
 
-	// Delete the agent node from the graph
-	err := s.graph.DeleteNode(ctx, "agent", agentID)
+	// Mark agent as offline instead of deleting (for persistence)
+	err := s.graph.UpdateNode(ctx, "agent", agentID, map[string]interface{}{
+		"status": domain.AgentStatusOffline,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to delete agent from graph: %w", err)
+		return fmt.Errorf("failed to update agent status to offline: %w", err)
 	}
 
 	if s.logger != nil {
-		s.logger.Info("Agent unregistered successfully", "agent_id", agentID)
+		s.logger.Info("Agent marked as offline", "agent_id", agentID)
 	}
 
 	return nil
@@ -156,6 +174,11 @@ func (s *Service) GetAllAgents(ctx context.Context) ([]*domain.Agent, error) {
 	}
 
 	return agents, nil
+}
+
+// GetOnlineAgents retrieves all online agents
+func (s *Service) GetOnlineAgents(ctx context.Context) ([]*domain.Agent, error) {
+	return s.GetAgentsByStatus(ctx, domain.AgentStatusOnline)
 }
 
 // GetAgentsByStatus retrieves agents with a specific status

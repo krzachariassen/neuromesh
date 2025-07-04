@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"neuromesh/internal/logging"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"neuromesh/internal/logging"
 )
 
 // TestNeo4jGraph_Integration tests Neo4j graph operations

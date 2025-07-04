@@ -15,7 +15,7 @@ import (
 
 	"neuromesh/internal/agent/registry"
 	aiInfrastructure "neuromesh/internal/ai/infrastructure"
-	pb "neuromesh/internal/api/grpc/orchestration"
+	pb "neuromesh/internal/api/grpc/api"
 	"neuromesh/internal/graph"
 	"neuromesh/internal/grpc/server"
 	"neuromesh/internal/logging"
@@ -102,6 +102,19 @@ func main() {
 	// Create the orchestrator service using the service factory for proper wiring
 	serviceFactory := application.NewServiceFactory(logger, productionGraph, messageBus, aiProvider)
 	orchestratorService := serviceFactory.CreateOrchestratorService()
+
+	// Ensure service factory is properly shut down
+	defer func() {
+		if err := serviceFactory.Shutdown(); err != nil {
+			logger.Error("Failed to shutdown service factory", err)
+		}
+	}()
+
+	// Start all background services (including GlobalMessageConsumer)
+	err = serviceFactory.StartServices(ctx)
+	if err != nil {
+		log.Fatalf("Failed to start background services: %v", err)
+	}
 
 	logger.Info("🧠 Clean Architecture AI Orchestrator initialized and ready!")
 

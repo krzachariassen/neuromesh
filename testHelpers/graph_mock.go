@@ -145,6 +145,36 @@ func (m *TestifyMockGraph) DeleteEdge(ctx context.Context, sourceType, sourceID,
 	return args.Error(0)
 }
 
+func (m *TestifyMockGraph) CreateIndex(ctx context.Context, nodeType, property string) error {
+	args := m.Called(ctx, nodeType, property)
+	return args.Error(0)
+}
+
+func (m *TestifyMockGraph) CreateUniqueConstraint(ctx context.Context, nodeType, property string) error {
+	args := m.Called(ctx, nodeType, property)
+	return args.Error(0)
+}
+
+func (m *TestifyMockGraph) DropIndex(ctx context.Context, nodeType, property string) error {
+	args := m.Called(ctx, nodeType, property)
+	return args.Error(0)
+}
+
+func (m *TestifyMockGraph) HasUniqueConstraint(ctx context.Context, nodeType, property string) (bool, error) {
+	args := m.Called(ctx, nodeType, property)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *TestifyMockGraph) HasIndex(ctx context.Context, nodeType, property string) (bool, error) {
+	args := m.Called(ctx, nodeType, property)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *TestifyMockGraph) HasRelationshipType(ctx context.Context, relationshipType string) (bool, error) {
+	args := m.Called(ctx, relationshipType)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *TestifyMockGraph) Close(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)
@@ -351,6 +381,36 @@ func (m *MockGraph) UpdateEdge(ctx context.Context, sourceType, sourceID, target
 func (m *MockGraph) DeleteEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string) error {
 	// Simple edge deletion for testing
 	return nil
+}
+
+func (m *MockGraph) CreateIndex(ctx context.Context, nodeType, property string) error {
+	// No-op create index for testing
+	return nil
+}
+
+func (m *MockGraph) CreateUniqueConstraint(ctx context.Context, nodeType, property string) error {
+	// No-op create constraint for testing
+	return nil
+}
+
+func (m *MockGraph) DropIndex(ctx context.Context, nodeType, property string) error {
+	// No-op drop index for testing
+	return nil
+}
+
+func (m *MockGraph) HasUniqueConstraint(ctx context.Context, nodeType, property string) (bool, error) {
+	// Return false for testing
+	return false, nil
+}
+
+func (m *MockGraph) HasIndex(ctx context.Context, nodeType, property string) (bool, error) {
+	// Return false for testing
+	return false, nil
+}
+
+func (m *MockGraph) HasRelationshipType(ctx context.Context, relationshipType string) (bool, error) {
+	// Return false for testing
+	return false, nil
 }
 
 func (m *MockGraph) Close(ctx context.Context) error {

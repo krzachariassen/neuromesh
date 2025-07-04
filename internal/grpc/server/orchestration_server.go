@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"neuromesh/internal/agent/domain"
-	pb "neuromesh/internal/api/grpc/orchestration"
+	pb "neuromesh/internal/api/grpc/api"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
 )
@@ -156,24 +157,86 @@ func (s *OrchestrationServer) UnregisterAgent(ctx context.Context, req *pb.Unreg
 	}, nil
 }
 
+// UpdateAgentStatus handles agent status updates - pure infrastructure endpoint
+func (s *OrchestrationServer) UpdateAgentStatus(ctx context.Context, req *pb.UpdateAgentStatusRequest) (*pb.UpdateAgentStatusResponse, error) {
+	// Input validation
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "request cannot be nil")
+	}
+
+	if req.AgentId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "agent ID cannot be empty")
+	}
+
+	s.logger.Debug("Updating agent status via dedicated endpoint",
+		"agent_id", req.AgentId,
+		"status", req.Status)
+
+	// Convert protobuf status to domain status
+	var domainStatus domain.AgentStatus
+	switch req.Status {
+	case pb.AgentStatus_AGENT_STATUS_HEALTHY:
+		domainStatus = domain.AgentStatusOnline
+	case pb.AgentStatus_AGENT_STATUS_BUSY:
+		domainStatus = domain.AgentStatusBusy
+	case pb.AgentStatus_AGENT_STATUS_ERROR:
+		domainStatus = domain.AgentStatusError
+	case pb.AgentStatus_AGENT_STATUS_SHUTTING_DOWN:
+		domainStatus = domain.AgentStatusShuttingDown
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "invalid agent status: %v", req.Status)
+	}
+
+	// Update status in registry
+	err := s.registryService.UpdateAgentStatus(ctx, req.AgentId, domainStatus)
+	if err != nil {
+		s.logger.Error("Failed to update agent status", err,
+			"agent_id", req.AgentId,
+			"status", req.Status)
+		return nil, status.Errorf(codes.Internal, "failed to update agent status: %v", err)
+	}
+
+	// Update last seen timestamp
+	err = s.registryService.UpdateAgentLastSeen(ctx, req.AgentId)
+	if err != nil {
+		s.logger.Warn("Failed to update agent last seen", err,
+			"agent_id", req.AgentId)
+		// Don't fail the request for this
+	}
+
+	s.logger.Debug("Successfully updated agent status",
+		"agent_id", req.AgentId,
+		"status", req.Status)
+
+	return &pb.UpdateAgentStatusResponse{
+		Success:    true,
+		Message:    "Agent status updated successfully",
+		ServerTime: timestamppb.Now(),
+	}, nil
+}
+
 // OpenConversation creates a bidirectional stream between the agent and AI Message Bus
 func (s *OrchestrationServer) OpenConversation(stream pb.OrchestrationService_OpenConversationServer) error {
 	ctx := stream.Context()
 
 	s.logger.Info("Opening conversation stream")
 
-	// Wait for the first message to identify the agent
-	firstMsg, err := stream.Recv()
-	if err != nil {
-		s.logger.Error("Failed to receive first message", err)
-		return status.Errorf(codes.InvalidArgument, "failed to receive agent identification: %v", err)
+	// Get agent ID from gRPC metadata (no need to wait for identification message!)
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return status.Errorf(codes.InvalidArgument, "missing gRPC metadata")
 	}
 
-	if firstMsg.FromId == "" {
-		return status.Errorf(codes.InvalidArgument, "from_id is required in first message")
+	agentIDs := md.Get("agent-id")
+	if len(agentIDs) == 0 {
+		return status.Errorf(codes.InvalidArgument, "missing agent-id in gRPC metadata")
 	}
 
-	agentID := firstMsg.FromId
+	agentID := agentIDs[0]
+	if agentID == "" {
+		return status.Errorf(codes.InvalidArgument, "agent-id cannot be empty")
+	}
+
 	s.logger.Info("Agent opened conversation", "agent_id", agentID)
 
 	// Subscribe to message bus for agent communication
@@ -201,12 +264,6 @@ func (s *OrchestrationServer) OpenConversation(stream pb.OrchestrationService_Op
 		s.logger.Info("Conversation stream closed", "agent_id", agentID)
 	}()
 
-	// Process the first message
-	if err := s.processIncomingMessage(streamCtx, firstMsg); err != nil {
-		s.logger.Error("Failed to process first message", err, "agent_id", agentID)
-		return err
-	}
-
 	// Channel for incoming messages from the stream
 	incomingChan := make(chan *pb.ConversationMessage, 10)
 	errorChan := make(chan error, 1)
@@ -233,9 +290,8 @@ func (s *OrchestrationServer) OpenConversation(stream pb.OrchestrationService_Op
 		}
 	}()
 
-	// Main event loop - only for real agents
+	// Main event loop - listen for both incoming messages and message bus
 	for {
-		// Real agents: Listen for both incoming messages and message bus
 		select {
 		case <-streamCtx.Done():
 			s.logger.Debug("Stream context cancelled", "agent_id", agentID)
@@ -258,7 +314,7 @@ func (s *OrchestrationServer) OpenConversation(stream pb.OrchestrationService_Op
 
 		case busMsg := <-messageChan:
 			if busMsg == nil {
-				// Real agent message bus closed - this is an error
+				// Message bus closed - this is an error
 				return status.Errorf(codes.Internal, "message bus closed")
 			}
 
@@ -292,7 +348,7 @@ func (s *OrchestrationServer) processIncomingMessage(ctx context.Context, msg *p
 		aiMsg := &messaging.AgentToAIMessage{
 			AgentID:       msg.FromId,
 			Content:       msg.Content,
-			MessageType:   messaging.MessageTypeCompletion,
+			MessageType:   messaging.MessageTypeAgentToAI, // Fixed: Use MessageTypeAgentToAI for routing
 			CorrelationID: msg.CorrelationId,
 			Context:       convertStructToMap(msg.Context),
 		}

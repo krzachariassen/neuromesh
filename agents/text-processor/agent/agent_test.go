@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/ztdp/agents/text-processor/proto/orchestration"
+	pb "github.com/ztdp/agents/text-processor/proto/api"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

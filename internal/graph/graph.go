@@ -21,6 +21,14 @@ type Graph interface {
 	UpdateEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string, properties map[string]interface{}) error
 	DeleteEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string) error
 
+	// Schema operations - for database schema management
+	CreateUniqueConstraint(ctx context.Context, nodeType, property string) error
+	CreateIndex(ctx context.Context, nodeType, property string) error
+	DropIndex(ctx context.Context, nodeType, property string) error
+	HasUniqueConstraint(ctx context.Context, nodeType, property string) (bool, error)
+	HasIndex(ctx context.Context, nodeType, property string) (bool, error)
+	HasRelationshipType(ctx context.Context, relationshipType string) (bool, error)
+
 	// Utility
 	GetStats() map[string]interface{}
 	Close(ctx context.Context) error

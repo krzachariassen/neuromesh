@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"github.com/stretchr/testify/mock"
-	"neuromesh/internal/orchestrator/domain"
+	"neuromesh/internal/execution/domain"
+	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 )
 
 // MockGraphExplorer provides a testify-based mock for graph explorer operations
@@ -17,14 +18,14 @@ func NewMockGraphExplorer() *MockGraphExplorer {
 	return &MockGraphExplorer{}
 }
 
-func (m *MockGraphExplorer) ExploreRequest(ctx context.Context, request string) (*domain.Analysis, error) {
+func (m *MockGraphExplorer) ExploreRequest(ctx context.Context, request string) (*orchestratorDomain.Analysis, error) {
 	args := m.Called(ctx, request)
-	return args.Get(0).(*domain.Analysis), args.Error(1)
+	return args.Get(0).(*orchestratorDomain.Analysis), args.Error(1)
 }
 
-func (m *MockGraphExplorer) GetContextualAgents(ctx context.Context, request string) ([]*domain.Analysis, error) {
+func (m *MockGraphExplorer) GetContextualAgents(ctx context.Context, request string) ([]*orchestratorDomain.Analysis, error) {
 	args := m.Called(ctx, request)
-	return args.Get(0).([]*domain.Analysis), args.Error(1)
+	return args.Get(0).([]*orchestratorDomain.Analysis), args.Error(1)
 }
 
 // MockExecutionCoordinator provides a testify-based mock for execution coordinator operations
@@ -37,7 +38,7 @@ func NewMockExecutionCoordinator() *MockExecutionCoordinator {
 	return &MockExecutionCoordinator{}
 }
 
-func (m *MockExecutionCoordinator) CreatePlan(ctx context.Context, decision *domain.Decision) (string, error) {
+func (m *MockExecutionCoordinator) CreatePlan(ctx context.Context, decision *orchestratorDomain.Decision) (string, error) {
 	args := m.Called(ctx, decision)
 	return args.String(0), args.Error(1)
 }
@@ -67,12 +68,12 @@ func NewMockLearningService() *MockLearningService {
 	return &MockLearningService{}
 }
 
-func (m *MockLearningService) AnalyzePatterns(ctx context.Context, sessionID string) (*domain.ConversationPattern, error) {
+func (m *MockLearningService) AnalyzePatterns(ctx context.Context, sessionID string) (*orchestratorDomain.ConversationPattern, error) {
 	args := m.Called(ctx, sessionID)
-	return args.Get(0).(*domain.ConversationPattern), args.Error(1)
+	return args.Get(0).(*orchestratorDomain.ConversationPattern), args.Error(1)
 }
 
-func (m *MockLearningService) UpdatePattern(ctx context.Context, pattern *domain.ConversationPattern) error {
+func (m *MockLearningService) UpdatePattern(ctx context.Context, pattern *orchestratorDomain.ConversationPattern) error {
 	args := m.Called(ctx, pattern)
 	return args.Error(0)
 }

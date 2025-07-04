@@ -39,20 +39,20 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start the agent
+	// Start the agent (includes registration, infrastructure, and AI conversation stream)
 	if err := textAgent.Start(ctx); err != nil {
 		log.Fatalf("❌ Failed to start agent: %v", err)
 	}
 
+	// Agent is now running with:
+	// ✅ Registration complete
+	// ✅ Dedicated heartbeat process (30s intervals)
+	// ✅ Dedicated status monitoring process
+	// ✅ AI conversation stream (for instructions/completions)
+
 	log.Printf("🎯 Agent %s ready for AI instructions!", config.AgentID)
 	log.Printf("🔗 Connected to orchestrator at %s", config.OrchestratorAddress)
 	log.Printf("🤖 Capabilities: word-count, text-analysis, character-count")
-
-	// Start heartbeat to maintain connection with orchestrator
-	heartbeatNotificationChan := make(chan bool, 1)
-	if err := textAgent.StartHeartbeat(ctx, heartbeatNotificationChan); err != nil {
-		log.Printf("⚠️ Failed to start heartbeat: %v", err)
-	}
 
 	// Wait for interrupt signal for graceful shutdown
 	sigChan := make(chan os.Signal, 1)

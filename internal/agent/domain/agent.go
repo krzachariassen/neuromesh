@@ -15,7 +15,9 @@ const (
 	AgentStatusOffline      AgentStatus = "offline"
 	AgentStatusBusy         AgentStatus = "busy"
 	AgentStatusMaintenance  AgentStatus = "maintenance"
-	AgentStatusDisconnected AgentStatus = "disconnected" // Agent missed heartbeat threshold
+	AgentStatusDisconnected AgentStatus = "disconnected"  // Agent missed heartbeat threshold
+	AgentStatusError        AgentStatus = "error"         // Agent reported error state
+	AgentStatusShuttingDown AgentStatus = "shutting_down" // Agent is gracefully shutting down
 )
 
 // AgentCapability represents a specific capability an agent provides

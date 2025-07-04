@@ -21,6 +21,97 @@ func NewGraphAgentRepository(g graph.Graph) *GraphAgentRepository {
 	}
 }
 
+// EnsureSchema ensures that the required schema for Agent domain is in place
+func (r *GraphAgentRepository) EnsureSchema(ctx context.Context) error {
+	// Define Agent domain schema requirements
+
+	// Agent node constraints and indexes
+	if err := r.graph.CreateUniqueConstraint(ctx, "agent", "id"); err != nil {
+		return fmt.Errorf("failed to create unique constraint for agent.id: %w", err)
+	}
+
+	if err := r.graph.CreateIndex(ctx, "agent", "name"); err != nil {
+		return fmt.Errorf("failed to create index for agent.name: %w", err)
+	}
+
+	if err := r.graph.CreateIndex(ctx, "agent", "status"); err != nil {
+		return fmt.Errorf("failed to create index for agent.status: %w", err)
+	}
+
+	// Capability node constraints and indexes
+	// Check if constraint already exists before trying to create it
+	hasConstraint, err := r.graph.HasUniqueConstraint(ctx, "capability", "name")
+	if err != nil {
+		return fmt.Errorf("failed to check existing capability.name constraint: %w", err)
+	}
+
+	if !hasConstraint {
+		// Check if there's an existing index that needs to be dropped first
+		hasIndex, err := r.graph.HasIndex(ctx, "capability", "name")
+		if err != nil {
+			return fmt.Errorf("failed to check existing capability.name index: %w", err)
+		}
+
+		if hasIndex {
+			// Drop the existing index so we can create the constraint
+			if err := r.dropIndex(ctx, "capability", "name"); err != nil {
+				return fmt.Errorf("failed to drop existing capability.name index: %w", err)
+			}
+		}
+
+		// Now create the unique constraint
+		if err := r.graph.CreateUniqueConstraint(ctx, "capability", "name"); err != nil {
+			return fmt.Errorf("failed to create unique constraint for capability.name: %w", err)
+		}
+	}
+
+	// Ensure HAS_CAPABILITY relationship type exists in the schema
+	// Check if the relationship type already exists
+	hasRelType, err := r.graph.HasRelationshipType(ctx, "HAS_CAPABILITY")
+	if err != nil {
+		return fmt.Errorf("failed to check HAS_CAPABILITY relationship type: %w", err)
+	}
+
+	if !hasRelType {
+		// Create schema nodes to define the relationship type permanently
+		schemaAgentID := "schema_agent"
+		schemaCapabilityID := "schema_capability"
+
+		// Create schema nodes if they don't exist
+		if err := r.graph.AddNode(ctx, "agent", schemaAgentID, map[string]interface{}{
+			"id":     schemaAgentID,
+			"name":   "Schema Definition Agent",
+			"status": "schema",
+		}); err != nil {
+			// Node might already exist, check if it's actually an error
+			existingNode, getErr := r.graph.GetNode(ctx, "agent", schemaAgentID)
+			if getErr != nil || existingNode == nil {
+				return fmt.Errorf("failed to create schema agent node: %w", err)
+			}
+		}
+
+		if err := r.graph.AddNode(ctx, "capability", schemaCapabilityID, map[string]interface{}{
+			"name": schemaCapabilityID,
+		}); err != nil {
+			// Node might already exist, check if it's actually an error
+			existingNode, getErr := r.graph.GetNode(ctx, "capability", schemaCapabilityID)
+			if getErr != nil || existingNode == nil {
+				return fmt.Errorf("failed to create schema capability node: %w", err)
+			}
+		}
+
+		// Create the schema relationship to register the type permanently
+		if err := r.graph.AddEdge(ctx, "agent", schemaAgentID, "capability", schemaCapabilityID, "HAS_CAPABILITY", map[string]interface{}{
+			"schema":      true,
+			"description": "Schema definition relationship",
+		}); err != nil {
+			return fmt.Errorf("failed to create schema HAS_CAPABILITY relationship: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // Create persists a new agent to the graph
 func (r *GraphAgentRepository) Create(ctx context.Context, agent *domain.Agent) error {
 	if err := agent.Validate(); err != nil {
@@ -326,4 +417,27 @@ func (r *GraphAgentRepository) getAgentCapabilities(ctx context.Context, agentNo
 	}
 
 	return capabilities, nil
+}
+
+// Helper methods for testing schema verification
+// These methods are used by tests to verify that schema elements exist in the database
+
+// dropIndex removes an index on the specified node label and property
+func (r *GraphAgentRepository) dropIndex(ctx context.Context, nodeLabel, property string) error {
+	return r.graph.DropIndex(ctx, nodeLabel, property)
+}
+
+// hasUniqueConstraint checks if a unique constraint exists on the specified node label and property
+func (r *GraphAgentRepository) hasUniqueConstraint(ctx context.Context, nodeLabel, property string) (bool, error) {
+	return r.graph.HasUniqueConstraint(ctx, nodeLabel, property)
+}
+
+// hasIndex checks if an index exists on the specified node label and property
+func (r *GraphAgentRepository) hasIndex(ctx context.Context, nodeLabel, property string) (bool, error) {
+	return r.graph.HasIndex(ctx, nodeLabel, property)
+}
+
+// hasRelationshipType checks if a relationship type is defined in the graph
+func (r *GraphAgentRepository) hasRelationshipType(ctx context.Context, relationshipType string) (bool, error) {
+	return r.graph.HasRelationshipType(ctx, relationshipType)
 }

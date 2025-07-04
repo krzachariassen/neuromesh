@@ -10,12 +10,13 @@ import "google/protobuf/struct.proto";
 // AI-Native OrchestrationService for event-driven agent communication
 // This service is designed for AI-first, conversational agent orchestration
 service OrchestrationService {
-  // Agent lifecycle management
+  // Agent lifecycle management - 100% dedicated for infrastructure
   rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
   rpc UnregisterAgent(UnregisterAgentRequest) returns (UnregisterAgentResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc UpdateAgentStatus(UpdateAgentStatusRequest) returns (UpdateAgentStatusResponse);
   
-  // AI-native conversational communication
+  // AI-native conversational communication - 100% dedicated for AI conversations
   rpc OpenConversation(stream ConversationMessage) returns (stream ConversationMessage);
   rpc SendInstruction(InstructionMessage) returns (InstructionResponse);
   rpc ReportCompletion(CompletionMessage) returns (CompletionResponse);
@@ -136,7 +137,22 @@ enum MessageType {
   MESSAGE_TYPE_UNKNOWN = 0;
   MESSAGE_TYPE_INSTRUCTION = 1;     // AI → Agent: Natural language instruction
   MESSAGE_TYPE_COMPLETION = 2;      // Agent → AI: Task completion response
-  MESSAGE_TYPE_STATUS_UPDATE = 3;   // Agent status updates
+  MESSAGE_TYPE_STATUS_UPDATE = 3;   // Agent status updates (DEPRECATED - use UpdateAgentStatus RPC instead)
   MESSAGE_TYPE_ERROR = 4;           // Error notifications
-  MESSAGE_TYPE_HEARTBEAT = 5;       // Keep-alive messages
+  MESSAGE_TYPE_HEARTBEAT = 5;       // Keep-alive messages (DEPRECATED - use Heartbeat RPC instead)
+}
+
+// Agent status update - dedicated infrastructure endpoint
+message UpdateAgentStatusRequest {
+  string agent_id = 1;
+  string session_id = 2;
+  AgentStatus status = 3;
+  google.protobuf.Struct metadata = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+message UpdateAgentStatusResponse {
+  bool success = 1;
+  string message = 2;
+  google.protobuf.Timestamp server_time = 3;
 }

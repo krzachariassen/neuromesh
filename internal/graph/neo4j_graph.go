@@ -3,9 +3,11 @@ package graph
 import (
 	"context"
 	"fmt"
+	"strings"
+
+	"neuromesh/internal/logging"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"neuromesh/internal/logging"
 )
 
 // Neo4jGraph implements simple graph operations using Neo4j
@@ -47,6 +49,11 @@ func NewNeo4jGraph(ctx context.Context, config GraphConfig, logger logging.Logge
 // Close closes the Neo4j connection
 func (g *Neo4jGraph) Close(ctx context.Context) error {
 	return g.driver.Close(ctx)
+}
+
+// Driver returns the underlying Neo4j driver for direct access in tests
+func (g *Neo4jGraph) Driver() neo4j.DriverWithContext {
+	return g.driver
 }
 
 // AddNode adds a node to the graph
@@ -161,7 +168,7 @@ func (g *Neo4jGraph) QueryNodes(ctx context.Context, nodeType string, filters ma
 			conditions = append(conditions, fmt.Sprintf("n.%s = $%s", k, k))
 			params[k] = v
 		}
-		query += fmt.Sprintf("%s", conditions[0]) // Just use first condition for simplicity
+		query += strings.Join(conditions, " AND ") // ✅ FIX: Join all conditions
 	}
 
 	query += " RETURN n"
@@ -332,6 +339,131 @@ func (g *Neo4jGraph) GetStats() map[string]interface{} {
 		"implementation": "neo4j",
 		"total_nodes":    0, // Simplified for now
 	}
+}
+
+// Schema operations
+func (g *Neo4jGraph) CreateUniqueConstraint(ctx context.Context, nodeType, property string) error {
+	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	constraintName := fmt.Sprintf("unique_%s_%s", strings.ToLower(nodeType), strings.ToLower(property))
+	query := fmt.Sprintf("CREATE CONSTRAINT %s IF NOT EXISTS FOR (n:%s) REQUIRE n.%s IS UNIQUE", constraintName, nodeType, property)
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		_, err := tx.Run(ctx, query, map[string]interface{}{})
+		return nil, err
+	})
+
+	return err
+}
+
+func (g *Neo4jGraph) CreateIndex(ctx context.Context, nodeType, property string) error {
+	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	indexName := fmt.Sprintf("index_%s_%s", strings.ToLower(nodeType), strings.ToLower(property))
+	query := fmt.Sprintf("CREATE INDEX %s IF NOT EXISTS FOR (n:%s) ON (n.%s)", indexName, nodeType, property)
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		_, err := tx.Run(ctx, query, map[string]interface{}{})
+		return nil, err
+	})
+
+	return err
+}
+
+func (g *Neo4jGraph) DropIndex(ctx context.Context, nodeType, property string) error {
+	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	indexName := fmt.Sprintf("index_%s_%s", strings.ToLower(nodeType), strings.ToLower(property))
+	query := fmt.Sprintf("DROP INDEX %s IF EXISTS", indexName)
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		_, err := tx.Run(ctx, query, map[string]interface{}{})
+		return nil, err
+	})
+
+	return err
+}
+
+func (g *Neo4jGraph) HasUniqueConstraint(ctx context.Context, nodeType, property string) (bool, error) {
+	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	// Check for unique constraints on the specified node type and property
+	query := "SHOW CONSTRAINTS YIELD name, labelsOrTypes, properties, type WHERE $nodeType IN labelsOrTypes AND $property IN properties AND type = 'UNIQUENESS'"
+	params := map[string]interface{}{
+		"nodeType": nodeType,
+		"property": property,
+	}
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return false, err
+		}
+		return result.Next(ctx), nil
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return result.(bool), nil
+}
+
+func (g *Neo4jGraph) HasIndex(ctx context.Context, nodeType, property string) (bool, error) {
+	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	query := "SHOW INDEXES YIELD name, labelsOrTypes, properties WHERE $nodeType IN labelsOrTypes AND $property IN properties"
+	params := map[string]interface{}{
+		"nodeType": nodeType,
+		"property": property,
+	}
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return false, err
+		}
+		return result.Next(ctx), nil
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return result.(bool), nil
+}
+
+func (g *Neo4jGraph) HasRelationshipType(ctx context.Context, relationshipType string) (bool, error) {
+	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	query := "CALL db.relationshipTypes() YIELD relationshipType as relType WHERE relType = $relationshipType RETURN count(relType) > 0 as exists"
+	params := map[string]interface{}{
+		"relationshipType": relationshipType,
+	}
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return false, err
+		}
+		if result.Next(ctx) {
+			record := result.Record()
+			return record.Values[0].(bool), nil
+		}
+		return false, nil
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return result.(bool), nil
 }
 
 // convertValue converts Neo4j values to Go types with proper type handling

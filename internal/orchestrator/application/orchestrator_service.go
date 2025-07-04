@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"neuromesh/internal/logging"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
@@ -123,8 +124,14 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		result.Message = decision.ClarificationQuestion
 	} else if decision.Type == orchestratorDomain.DecisionTypeExecute {
 		ors.logger.Info("🚀 Decision type: Execute", "requiredAgents", len(analysis.RequiredAgents))
-		// AI-native execution: Let AI orchestrate with agents
-		if len(analysis.RequiredAgents) > 0 {
+
+		// Check if this is a meta-query that should be handled with AI orchestrator knowledge
+		if ors.isOrchestratorMetaQuery(request.UserInput) {
+			ors.logger.Info("🏛️ Meta-query detected, using AI to provide intelligent system insights")
+			// Use AI conversation engine with orchestrator context for dynamic, intelligent responses
+			result.Message = ors.handleMetaQuery(ctx, request.UserInput, agentContext)
+		} else if len(analysis.RequiredAgents) > 0 {
+			// AI-native execution: Let AI orchestrate with agents for actual user tasks
 			ors.logger.Info("🤖 Using AI conversation engine with agents", "agents", analysis.RequiredAgents)
 			// Use injected AI conversation engine for agent coordination
 			aiResult, err := ors.aiConversationEngine.ProcessWithAgents(ctx, request.UserInput, request.UserID, agentContext)
@@ -170,4 +177,61 @@ func (ors *OrchestratorService) ProcessConversation(ctx context.Context, userInp
 // AnalyzeConversationPatterns analyzes patterns in user conversations
 func (ors *OrchestratorService) AnalyzeConversationPatterns(ctx context.Context, sessionID string) (*orchestratorDomain.ConversationPattern, error) {
 	return ors.learningService.AnalyzePatterns(ctx, sessionID)
+}
+
+// isOrchestratorMetaQuery detects if a user input is a meta-query about the orchestrator system
+// that should be answered directly rather than routed through agents
+func (ors *OrchestratorService) isOrchestratorMetaQuery(userInput string) bool {
+	lowercaseInput := strings.ToLower(userInput)
+
+	// Define meta-query patterns that should be handled directly by orchestrator
+	metaQueryPatterns := []string{
+		"what agents",
+		"list agents",
+		"show agents",
+		"available agents",
+		"agent capabilities",
+		"system status",
+		"orchestrator status",
+		"are you healthy",
+		"health check",
+		"what can you do",
+		"help",
+		"how do you work",
+		"what is your purpose",
+	}
+
+	for _, pattern := range metaQueryPatterns {
+		if strings.Contains(lowercaseInput, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// handleMetaQuery uses AI to provide intelligent, dynamic responses to orchestrator meta-queries
+// This replaces hardcoded responses with AI-native understanding of the system state
+func (ors *OrchestratorService) handleMetaQuery(ctx context.Context, userInput, agentContext string) string {
+	// Use AI conversation engine to provide intelligent, context-aware responses
+	// The AI understands the current system state and can provide much more dynamic answers
+	systemPrompt := fmt.Sprintf(`You are the NeuroMesh AI Orchestrator responding to a meta-query about the system.
+
+Current System State:
+%s
+
+User Query: %s
+
+Provide a helpful, accurate response about the orchestrator system, available agents, capabilities, or system status. 
+Be conversational and informative. If agents are available, describe their capabilities dynamically.
+If no agents are available, explain what the orchestrator can do and how agents would enhance the system.`,
+		agentContext, userInput)
+
+	// Try AI-powered response first
+	aiResult, err := ors.aiConversationEngine.ProcessWithAgents(ctx, systemPrompt, "orchestrator-meta", agentContext)
+	if err != nil {
+		ors.logger.Error("❌ AI meta-query processing failed, using fallback", err)
+	}
+
+	return aiResult
 }

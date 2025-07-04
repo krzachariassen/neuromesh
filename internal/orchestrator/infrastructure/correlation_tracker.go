@@ -82,6 +82,17 @@ func (ct *CorrelationTracker) CleanupRequest(correlationID string) {
 	}
 }
 
+// CleanupAll removes all pending requests from the tracker (used during shutdown)
+func (ct *CorrelationTracker) CleanupAll() {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	for correlationID, request := range ct.requests {
+		close(request.ResponseChan)
+		delete(ct.requests, correlationID)
+	}
+}
+
 // StartCleanupWorker starts a background worker that periodically cleans up expired requests
 func (ct *CorrelationTracker) StartCleanupWorker(ctx context.Context) {
 	go func() {

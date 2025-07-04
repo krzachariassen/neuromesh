@@ -12,7 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"neuromesh/internal/agent/domain"
-	pb "neuromesh/internal/api/grpc/orchestration"
+	pb "neuromesh/internal/api/grpc/api"
 	"neuromesh/internal/logging"
 	"neuromesh/testHelpers"
 )
