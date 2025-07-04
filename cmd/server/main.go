@@ -103,6 +103,10 @@ func main() {
 	serviceFactory := application.NewServiceFactory(logger, productionGraph, messageBus, aiProvider)
 	orchestratorService := serviceFactory.CreateOrchestratorService()
 
+	// Get conversation and user services from service factory for conversation persistence
+	conversationService := serviceFactory.GetConversationService()
+	userService := serviceFactory.GetUserService()
+
 	// Ensure service factory is properly shut down
 	defer func() {
 		if err := serviceFactory.Shutdown(); err != nil {
@@ -124,9 +128,17 @@ func main() {
 	// Create adapter for web interface compatibility
 	orchestratorAdapter := web.NewOrchestratorAdapter(orchestratorService)
 
-	// Create WebBFF for web UI integration with the new orchestrator
-	webBFF := web.NewWebBFF(orchestratorAdapter, logger)
-	webServer := webBFF.CreateWebServer(":8081")
+	// Create ConversationAwareWebBFF for web UI integration with conversation persistence
+	conversationAwareWebBFF := web.NewConversationAwareWebBFF(orchestratorAdapter, conversationService, userService, logger)
+
+	// Initialize conversation and user schemas
+	err = conversationAwareWebBFF.InitializeSchema(ctx)
+	if err != nil {
+		log.Fatalf("Failed to initialize conversation schemas: %v", err)
+	}
+
+	// Create WebBFF server with conversation awareness
+	webServer := conversationAwareWebBFF.CreateWebServer(":8081")
 
 	logger.Info("🌐 WebBFF server initialized for web UI integration")
 

@@ -8,6 +8,7 @@ import (
 	aiInfrastructure "neuromesh/internal/ai/infrastructure"
 	"neuromesh/internal/logging"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
+	planningApplication "neuromesh/internal/planning/application"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -23,27 +24,13 @@ func (m *MockGraphExplorer) GetAgentContext(ctx context.Context) (string, error)
 	return args.String(0), args.Error(1)
 }
 
-type MockAIConversationEngine struct {
+type MockAIExecutionEngine struct {
 	mock.Mock
 }
 
-func (m *MockAIConversationEngine) ProcessWithAgents(ctx context.Context, userInput, userID, agentContext string) (string, error) {
-	args := m.Called(ctx, userInput, userID, agentContext)
+func (m *MockAIExecutionEngine) ExecuteWithAgents(ctx context.Context, executionPlan, userInput, userID, agentContext string) (string, error) {
+	args := m.Called(ctx, executionPlan, userInput, userID, agentContext)
 	return args.String(0), args.Error(1)
-}
-
-type MockLearningService struct {
-	mock.Mock
-}
-
-func (m *MockLearningService) StoreInsights(ctx context.Context, userRequest string, analysis *orchestratorDomain.Analysis, decision *orchestratorDomain.Decision) error {
-	args := m.Called(ctx, userRequest, analysis, decision)
-	return args.Error(0)
-}
-
-func (m *MockLearningService) AnalyzePatterns(ctx context.Context, sessionID string) (*orchestratorDomain.ConversationPattern, error) {
-	args := m.Called(ctx, sessionID)
-	return args.Get(0).(*orchestratorDomain.ConversationPattern), args.Error(1)
 }
 
 // setupRealAIProvider creates a real OpenAI provider for testing
@@ -68,14 +55,14 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 	t.Run("should process clarification request successfully", func(t *testing.T) {
 		// Setup with real AI provider
 		aiProvider := setupRealAIProviderForOrchestrator(t)
-		aiEngine := NewAIDecisionEngine(aiProvider)
+		aiEngine := planningApplication.NewAIDecisionEngine(aiProvider)
 
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
-		mockConversationEngine := &MockAIConversationEngine{}
-		mockLearning := &MockLearningService{}
+		mockExecutionEngine := &MockAIExecutionEngine{}
 
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning, logging.NewNoOpLogger())
+		logger, _ := logging.NewLogger(false)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, logger)
 
 		// Test data
 		request := &OrchestratorRequest{
@@ -87,8 +74,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 
 		// Setup expectations
 		mockExplorer.On("GetAgentContext", mock.Anything).Return(agentContext, nil)
-		mockConversationEngine.On("ProcessWithAgents", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("AI handled the request", nil).Maybe()
-		mockLearning.On("StoreInsights", mock.Anything, request.UserInput, mock.Anything, mock.Anything).Return(nil)
+		mockExecutionEngine.On("ExecuteWithAgents", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("AI handled the request", nil).Maybe()
 
 		// Execute
 		result, err := service.ProcessUserRequest(context.Background(), request)
@@ -105,20 +91,19 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 
 		// Verify mocks
 		mockExplorer.AssertExpectations(t)
-		mockLearning.AssertExpectations(t)
 	})
 
 	t.Run("should process execution request with action successfully", func(t *testing.T) {
 		// Setup with real AI provider
 		aiProvider := setupRealAIProviderForOrchestrator(t)
-		aiEngine := NewAIDecisionEngine(aiProvider)
+		aiEngine := planningApplication.NewAIDecisionEngine(aiProvider)
 
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
-		mockConversationEngine := &MockAIConversationEngine{}
-		mockLearning := &MockLearningService{}
+		mockExecutionEngine := &MockAIExecutionEngine{}
 
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning, logging.NewNoOpLogger())
+		logger, _ := logging.NewLogger(false)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, logger)
 
 		// Test data
 		request := &OrchestratorRequest{
@@ -130,8 +115,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 
 		// Setup expectations
 		mockExplorer.On("GetAgentContext", mock.Anything).Return(agentContext, nil)
-		mockConversationEngine.On("ProcessWithAgents", mock.Anything, request.UserInput, request.UserID, agentContext).Return("AI orchestrated deployment successfully", nil)
-		mockLearning.On("StoreInsights", mock.Anything, request.UserInput, mock.Anything, mock.Anything).Return(nil)
+		mockExecutionEngine.On("ExecuteWithAgents", mock.Anything, mock.Anything, request.UserInput, request.UserID, agentContext).Return("AI orchestrated deployment successfully", nil)
 
 		// Execute
 		result, err := service.ProcessUserRequest(context.Background(), request)
@@ -150,25 +134,24 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 
 		// Verify mocks
 		mockExplorer.AssertExpectations(t)
-		mockLearning.AssertExpectations(t)
 
-		// If AI made an execute decision with agents, conversation engine should be called
+		// If AI made an execute decision with agents, execution engine should be called
 		if result.Decision.Type == orchestratorDomain.DecisionTypeExecute && len(result.Analysis.RequiredAgents) > 0 {
-			mockConversationEngine.AssertExpectations(t)
+			mockExecutionEngine.AssertExpectations(t)
 		}
 	})
 
 	t.Run("should handle agent context error", func(t *testing.T) {
 		// Setup with real AI provider
 		aiProvider := setupRealAIProviderForOrchestrator(t)
-		aiEngine := NewAIDecisionEngine(aiProvider)
+		aiEngine := planningApplication.NewAIDecisionEngine(aiProvider)
 
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
-		mockConversationEngine := &MockAIConversationEngine{}
-		mockLearning := &MockLearningService{}
+		mockExecutionEngine := &MockAIExecutionEngine{}
 
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockConversationEngine, mockLearning, logging.NewNoOpLogger())
+		logger, _ := logging.NewLogger(false)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, logger)
 
 		request := &OrchestratorRequest{
 			UserInput: "Deploy app",

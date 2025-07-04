@@ -11,13 +11,18 @@ import (
 
 // AIDecisionEngineInterface defines the interface for AI decision making
 type AIDecisionEngineInterface interface {
-	ExploreAndAnalyze(ctx context.Context, userInput, userID, agentContext string) (*orchestratorDomain.Analysis, error)
-	MakeDecision(ctx context.Context, userInput, userID string, analysis *orchestratorDomain.Analysis) (*orchestratorDomain.Decision, error)
+	ExploreAndAnalyze(ctx context.Context, userInput, userID, requestID, agentContext string) (*orchestratorDomain.Analysis, error)
+	MakeDecision(ctx context.Context, userInput, userID, requestID string, analysis *orchestratorDomain.Analysis) (*orchestratorDomain.Decision, error)
 }
 
 // GraphExplorerInterface defines the interface for graph exploration
 type GraphExplorerInterface interface {
 	GetAgentContext(ctx context.Context) (string, error)
+}
+
+// AIExecutionEngineInterface defines the interface for AI-native execution orchestration
+type AIExecutionEngineInterface interface {
+	ExecuteWithAgents(ctx context.Context, executionPlan, userInput, userID, agentContext string) (string, error)
 }
 
 // AIConversationEngineInterface defines the interface for AI-native conversation orchestration
@@ -34,27 +39,24 @@ type LearningServiceInterface interface {
 // OrchestratorService represents the clean AI orchestrator service implementation
 // This replaces the old ProcessRequest() functionality with clean architecture
 type OrchestratorService struct {
-	aiDecisionEngine     AIDecisionEngineInterface
-	graphExplorer        GraphExplorerInterface
-	aiConversationEngine AIConversationEngineInterface
-	learningService      LearningServiceInterface
-	logger               logging.Logger
+	aiDecisionEngine  AIDecisionEngineInterface
+	graphExplorer     GraphExplorerInterface
+	aiExecutionEngine AIExecutionEngineInterface
+	logger            logging.Logger
 }
 
 // NewOrchestratorService creates a new orchestrator service implementation
 func NewOrchestratorService(
 	aiDecisionEngine AIDecisionEngineInterface,
 	graphExplorer GraphExplorerInterface,
-	aiConversationEngine AIConversationEngineInterface,
-	learningService LearningServiceInterface,
+	aiExecutionEngine AIExecutionEngineInterface,
 	logger logging.Logger,
 ) *OrchestratorService {
 	return &OrchestratorService{
-		aiDecisionEngine:     aiDecisionEngine,
-		graphExplorer:        graphExplorer,
-		aiConversationEngine: aiConversationEngine,
-		learningService:      learningService,
-		logger:               logger,
+		aiDecisionEngine:  aiDecisionEngine,
+		graphExplorer:     graphExplorer,
+		aiExecutionEngine: aiExecutionEngine,
+		logger:            logger,
 	}
 }
 
@@ -63,6 +65,7 @@ type OrchestratorRequest struct {
 	UserInput string `json:"user_input"`
 	UserID    string `json:"user_id"`
 	SessionID string `json:"session_id,omitempty"`
+	MessageID string `json:"message_id,omitempty"` // ID of the user message that triggered this request
 }
 
 // OrchestratorResult represents the orchestrator's response
@@ -78,39 +81,31 @@ type OrchestratorResult struct {
 // ProcessUserRequest is the main entry point that replaces the old ProcessRequest()
 // This follows the clean architecture pattern with proper domain boundaries
 func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request *OrchestratorRequest) (*OrchestratorResult, error) {
-	ors.logger.Info("🔍 ProcessUserRequest started", "userInput", request.UserInput, "userID", request.UserID)
-
 	// 1. Get agent context for AI decision making
 	agentContext, err := ors.graphExplorer.GetAgentContext(ctx)
 	if err != nil {
-		ors.logger.Error("❌ Failed to get agent context", err)
 		return &OrchestratorResult{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to get agent context: %v", err),
 		}, nil // Return result with error, not Go error
 	}
-	ors.logger.Info("✅ Agent context retrieved", "agentContext", agentContext)
 
 	// 2. Perform AI analysis and decision making
-	analysis, err := ors.aiDecisionEngine.ExploreAndAnalyze(ctx, request.UserInput, request.UserID, agentContext)
+	analysis, err := ors.aiDecisionEngine.ExploreAndAnalyze(ctx, request.UserInput, request.UserID, request.MessageID, agentContext)
 	if err != nil {
-		ors.logger.Error("❌ Failed to analyze request", err)
 		return &OrchestratorResult{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to analyze request: %v", err),
 		}, nil
 	}
-	ors.logger.Info("✅ Analysis completed", "intent", analysis.Intent, "requiredAgents", analysis.RequiredAgents)
 
-	decision, err := ors.aiDecisionEngine.MakeDecision(ctx, request.UserInput, request.UserID, analysis)
+	decision, err := ors.aiDecisionEngine.MakeDecision(ctx, request.UserInput, request.UserID, request.MessageID, analysis)
 	if err != nil {
-		ors.logger.Error("❌ Failed to make decision", err)
 		return &OrchestratorResult{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to make decision: %v", err),
 		}, nil
 	}
-	ors.logger.Info("✅ Decision made", "type", decision.Type, "clarificationQuestion", decision.ClarificationQuestion, "executionPlan", decision.ExecutionPlan)
 
 	result := &OrchestratorResult{
 		Analysis: analysis,
@@ -131,17 +126,17 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 			// Use AI conversation engine with orchestrator context for dynamic, intelligent responses
 			result.Message = ors.handleMetaQuery(ctx, request.UserInput, agentContext)
 		} else if len(analysis.RequiredAgents) > 0 {
-			// AI-native execution: Let AI orchestrate with agents for actual user tasks
-			ors.logger.Info("🤖 Using AI conversation engine with agents", "agents", analysis.RequiredAgents)
-			// Use injected AI conversation engine for agent coordination
-			aiResult, err := ors.aiConversationEngine.ProcessWithAgents(ctx, request.UserInput, request.UserID, agentContext)
+			// AI-native execution: Use dedicated execution engine for agent coordination
+			ors.logger.Info("🚀 Using AI execution engine with agents", "agents", analysis.RequiredAgents)
+			// Use injected AI execution engine for agent coordination
+			executionResult, err := ors.aiExecutionEngine.ExecuteWithAgents(ctx, decision.ExecutionPlan, request.UserInput, request.UserID, agentContext)
 			if err != nil {
 				ors.logger.Error("❌ AI-native execution failed", err)
 				result.Success = false
 				result.Error = fmt.Sprintf("AI-native execution failed: %v", err)
 			} else {
-				ors.logger.Info("✅ AI conversation engine result", "aiResult", aiResult)
-				result.Message = aiResult
+				ors.logger.Info("✅ AI execution engine result", "executionResult", executionResult)
+				result.Message = executionResult
 			}
 		} else {
 			ors.logger.Info("📝 No agents required, using execution plan")
@@ -153,31 +148,17 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 
 	ors.logger.Info("✅ Final result", "success", result.Success, "message", result.Message, "error", result.Error)
 
-	// 4. Store insights for learning (fixing the architecture violation)
-	err = ors.learningService.StoreInsights(ctx, request.UserInput, analysis, decision)
-	if err != nil {
-		// Log error but don't fail the request
-		// In a real implementation, this would be logged properly
-		fmt.Printf("Warning: Failed to store insights: %v\n", err)
-	}
+	// 4. Learning service removed for now (following YAGNI principles)
+	// err = ors.learningService.StoreInsights(ctx, request.UserInput, analysis, decision)
+	// if err != nil {
+	//	ors.logger.Warn("Failed to store learning insights", "error", err)
+	// }
 
 	return result, nil
 }
 
-// ProcessConversation directly uses AI conversation engine for simple requests
-func (ors *OrchestratorService) ProcessConversation(ctx context.Context, userInput, userID string) (string, error) {
-	agentContext, err := ors.graphExplorer.GetAgentContext(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get agent context: %w", err)
-	}
-
-	return ors.aiConversationEngine.ProcessWithAgents(ctx, userInput, userID, agentContext)
-}
-
-// AnalyzeConversationPatterns analyzes patterns in user conversations
-func (ors *OrchestratorService) AnalyzeConversationPatterns(ctx context.Context, sessionID string) (*orchestratorDomain.ConversationPattern, error) {
-	return ors.learningService.AnalyzePatterns(ctx, sessionID)
-}
+// NOTE: ProcessConversation and AnalyzeConversationPatterns methods removed
+// Following YAGNI principles - we're not implementing these features yet
 
 // isOrchestratorMetaQuery detects if a user input is a meta-query about the orchestrator system
 // that should be answered directly rather than routed through agents
@@ -210,28 +191,9 @@ func (ors *OrchestratorService) isOrchestratorMetaQuery(userInput string) bool {
 	return false
 }
 
-// handleMetaQuery uses AI to provide intelligent, dynamic responses to orchestrator meta-queries
-// This replaces hardcoded responses with AI-native understanding of the system state
+// handleMetaQuery provides simple responses to orchestrator meta-queries
+// Following YAGNI - keeping it simple for now
 func (ors *OrchestratorService) handleMetaQuery(ctx context.Context, userInput, agentContext string) string {
-	// Use AI conversation engine to provide intelligent, context-aware responses
-	// The AI understands the current system state and can provide much more dynamic answers
-	systemPrompt := fmt.Sprintf(`You are the NeuroMesh AI Orchestrator responding to a meta-query about the system.
-
-Current System State:
-%s
-
-User Query: %s
-
-Provide a helpful, accurate response about the orchestrator system, available agents, capabilities, or system status. 
-Be conversational and informative. If agents are available, describe their capabilities dynamically.
-If no agents are available, explain what the orchestrator can do and how agents would enhance the system.`,
-		agentContext, userInput)
-
-	// Try AI-powered response first
-	aiResult, err := ors.aiConversationEngine.ProcessWithAgents(ctx, systemPrompt, "orchestrator-meta", agentContext)
-	if err != nil {
-		ors.logger.Error("❌ AI meta-query processing failed, using fallback", err)
-	}
-
-	return aiResult
+	// Simple implementation for now
+	return fmt.Sprintf("This is a meta-query about the orchestrator system. Available agents: %s", agentContext)
 }

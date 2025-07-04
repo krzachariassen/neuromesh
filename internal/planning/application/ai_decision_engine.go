@@ -4,10 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	aiDomain "neuromesh/internal/ai/domain"
-	executiondomain "neuromesh/internal/execution/domain"
-	planningdomain "neuromesh/internal/planning/domain"
 	"neuromesh/internal/orchestrator/domain"
 )
 
@@ -64,11 +63,15 @@ Analyze this request based on available agents.`, userID, userInput)
 	requiredAgents := e.responseParser.ExtractRequiredAgents(response)
 	reasoning := e.responseParser.ExtractSection(response, "Reasoning:")
 
-	return domain.NewAnalysis(intent, category, confidence, requiredAgents, reasoning), nil
+	// Generate a request ID for this analysis
+	requestID := fmt.Sprintf("req-%s-%s", userID, time.Now().Format("20060102-150405"))
+	
+	return domain.NewAnalysis(requestID, intent, category, confidence, requiredAgents, reasoning), nil
 }
 
 // MakeDecision determines whether to clarify or execute based on analysis
-func (e *AIDecisionEngine) MakeDecision(ctx context.Context, userInput, userID string, analysis *domain.Analysis) (*domain.DecisionResult, error) {
+// Returns planning decisions only - orchestrator handles execution coordination
+func (e *AIDecisionEngine) MakeDecision(ctx context.Context, userInput, userID string, analysis *domain.Analysis) (*domain.Decision, error) {
 	systemPrompt := `You are an AI orchestrator that decides whether to ask for clarification or execute a request.
 
 Based on the provided analysis, you must:
@@ -127,11 +130,13 @@ Based on this analysis, decide whether to clarify or execute.`, userID, userInpu
 		return domain.NewClarifyDecision(clarificationQuestion, reasoning), nil
 	}
 
-	// Extract execution details
+	// For execution decisions, planning domain should return a planning recommendation
+	// The orchestrator will coordinate with execution domain for actual execution
 	executionPlan := e.responseParser.ExtractSection(response, "EXECUTION_PLAN:")
 	agentCoordination := e.responseParser.ExtractSection(response, "AGENT_COORDINATION:")
 	reasoning := e.responseParser.ExtractSection(response, "REASONING:")
 
-	// Return execution decision from execution domain
-	return executiondomain.NewExecuteDecision(executionPlan, agentCoordination, reasoning), nil
+	// Return a planning recommendation that execution should happen
+	// Note: This creates a unified decision for now, but orchestrator coordinates domains
+	return domain.NewExecuteDecision(executionPlan, agentCoordination, reasoning), nil
 }

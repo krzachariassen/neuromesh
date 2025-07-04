@@ -8,11 +8,14 @@ import (
 	aiInfrastructure "neuromesh/internal/ai/infrastructure"
 	conversationApp "neuromesh/internal/conversation/application"
 	conversationInfra "neuromesh/internal/conversation/infrastructure"
+	executionApp "neuromesh/internal/execution/application"
 	"neuromesh/internal/graph"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
 	"neuromesh/internal/orchestrator/infrastructure"
 	planningApp "neuromesh/internal/planning/application"
+	userApp "neuromesh/internal/user/application"
+	userInfra "neuromesh/internal/user/infrastructure"
 )
 
 // ServiceFactory creates properly wired orchestrator service instances
@@ -24,9 +27,12 @@ type ServiceFactory struct {
 	aiProvider            aiDomain.AIProvider
 	correlationTracker    *infrastructure.CorrelationTracker
 	globalMessageConsumer *infrastructure.GlobalMessageConsumer
-	shutdownContext       context.Context
-	shutdownCancel        context.CancelFunc
-	started               bool // Track startup state to prevent double-start
+	// Conversation services
+	conversationService conversationApp.ConversationService
+	userService         userApp.UserService
+	shutdownContext     context.Context
+	shutdownCancel      context.CancelFunc
+	started             bool // Track startup state to prevent double-start
 }
 
 // NewServiceFactory creates a new service factory with proper dependency wiring
@@ -51,6 +57,20 @@ func NewServiceFactory(
 		globalMessageConsumer = infrastructure.NewGlobalMessageConsumer(aiMessageBus, correlationTracker)
 	}
 
+	// Create conversation and user services
+	var conversationService conversationApp.ConversationService
+	var userService userApp.UserService
+
+	if graph != nil {
+		// Create repositories
+		userRepo := userInfra.NewGraphUserRepository(graph)
+		conversationRepo := conversationInfra.NewGraphConversationRepository(graph)
+
+		// Create services
+		userService = userApp.NewUserService(userRepo)
+		conversationService = conversationApp.NewConversationService(conversationRepo)
+	}
+
 	return &ServiceFactory{
 		logger:                logger,
 		graph:                 graph,
@@ -59,6 +79,8 @@ func NewServiceFactory(
 		aiProvider:            aiProvider,
 		correlationTracker:    correlationTracker,
 		globalMessageConsumer: globalMessageConsumer,
+		conversationService:   conversationService,
+		userService:           userService,
 		shutdownContext:       shutdownCtx,
 		shutdownCancel:        shutdownCancel,
 	}
@@ -68,20 +90,17 @@ func NewServiceFactory(
 func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	// Create infrastructure services
 	agentService := infrastructure.NewGraphAgentService(sf.graph)
-	conversationService := conversationInfra.NewGraphConversationService(sf.graph)
 
 	// Create all application services with proper dependencies
 	aiDecisionEngine := planningApp.NewAIDecisionEngine(sf.aiProvider)
 	graphExplorer := NewGraphExplorer(agentService)
-	aiConversationEngine := conversationApp.NewAIConversationEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker)
-	learningService := NewLearningService(conversationService)
+	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker)
 
-	// Wire everything together
+	// Wire everything together (without learning service for now - following YAGNI)
 	return NewOrchestratorService(
 		aiDecisionEngine,
 		graphExplorer,
-		aiConversationEngine,
-		learningService,
+		aiExecutionEngine,
 		sf.logger,
 	)
 }
@@ -139,4 +158,14 @@ func (sf *ServiceFactory) Shutdown() error {
 // CreateAIProvider creates an AI provider with the given configuration
 func CreateAIProvider(config *aiInfrastructure.OpenAIConfig, logger logging.Logger) aiDomain.AIProvider {
 	return aiInfrastructure.NewOpenAIProvider(config, logger)
+}
+
+// GetUserService returns the user service instance
+func (sf *ServiceFactory) GetUserService() userApp.UserService {
+	return sf.userService
+}
+
+// GetConversationService returns the conversation service instance
+func (sf *ServiceFactory) GetConversationService() conversationApp.ConversationService {
+	return sf.conversationService
 }

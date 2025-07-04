@@ -2,10 +2,14 @@ package domain
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Analysis represents the AI analysis result for a user request
 type Analysis struct {
+	ID             string    `json:"id"`
+	RequestID      string    `json:"request_id"`
 	Intent         string    `json:"intent"`
 	Category       string    `json:"category"`
 	Confidence     int       `json:"confidence"` // 0-100
@@ -15,7 +19,7 @@ type Analysis struct {
 }
 
 // NewAnalysis creates a new analysis with validation
-func NewAnalysis(intent, category string, confidence int, requiredAgents []string, reasoning string) *Analysis {
+func NewAnalysis(requestID, intent, category string, confidence int, requiredAgents []string, reasoning string) *Analysis {
 	// Validate confidence range
 	if confidence > 100 {
 		confidence = 100
@@ -25,6 +29,8 @@ func NewAnalysis(intent, category string, confidence int, requiredAgents []strin
 	}
 
 	return &Analysis{
+		ID:             uuid.New().String(),
+		RequestID:      requestID,
 		Intent:         intent,
 		Category:       category,
 		Confidence:     confidence,
