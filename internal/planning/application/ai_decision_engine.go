@@ -65,7 +65,7 @@ Analyze this request based on available agents.`, userID, userInput)
 
 	// Generate a request ID for this analysis
 	requestID := fmt.Sprintf("req-%s-%s", userID, time.Now().Format("20060102-150405"))
-	
+
 	return domain.NewAnalysis(requestID, intent, category, confidence, requiredAgents, reasoning), nil
 }
 

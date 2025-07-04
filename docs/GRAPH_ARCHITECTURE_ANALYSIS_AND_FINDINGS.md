@@ -790,62 +790,46 @@ curl -u neo4j:orchestrator123 -X POST http://localhost:7474/db/data/cypher \
 - Full TDD coverage with integration tests passing
 - Neo4j-backed conversation storage operational
 
-### 🎯 PHASE 2.3: AI Decision Flow Tracking & Agent Message Integration
-**Priority**: P1 - **Critical for learning and auditability**
+### 🎯 PHASE 2.3: Orchestrator Domain Graph Persistence Analysis Complete
+**Priority**: P1 - **Ready for Implementation**
 
-**CURRENT OBJECTIVE**: Integrate AI decision processes into the conversation graph for complete traceability and learning.
+**STATUS**: **ANALYSIS COMPLETE** ✅ - Full end-to-end orchestrator flow analyzed and documented
 
-**Key Missing Components**:
-1. **UserRequest Node Integration**
-   - Link user inputs to AI analysis and decision processes
-   - Track intent detection, confidence scoring, and reasoning
-   - Enable pattern analysis of user request types
+**ANALYSIS RESULTS**:
+- Complete trace of ProcessUserRequest → Planning → Decision → Execution domains  
+- All data entities identified for graph persistence (Analysis, Decision, ExecutionPlan, ExecutionStep)
+- Graph schema designed with proper relationships to User/Session/Conversation/Agent nodes
+- Implementation plan documented with TDD phases
+- Ready for systematic implementation following clean architecture principles
 
-2. **AIDecision Audit Trail**
-   - Persist AI decision type (CLARIFY vs EXECUTE)
-   - Store decision reasoning and confidence metrics
-   - Link decisions to conversation context for learning
+**IMMEDIATE NEXT STEP**: Fix planning domain compilation issues and begin Analysis domain graph persistence
 
-3. **ExecutionPlan Tracking**
-   - Track execution plan creation and agent selection
-   - Monitor execution success/failure rates
-   - Enable optimization of agent routing strategies
+**Documentation Created**:
+- `/docs/ORCHESTRATOR_GRAPH_PERSISTENCE_ANALYSIS.md` - Complete technical analysis
+- `/docs/IMPLEMENTATION_BACKLOG.md` - Detailed implementation roadmap
 
-4. **Agent Message Integration**
-   - Capture agent communications within conversation flow
-   - Link agent messages to execution plans and decisions
-   - Enable end-to-end message correlation
+### 🔧 PHASE 2.4: Planning Domain Fix & Graph Persistence
+**Priority**: P0 - **Immediate Implementation Required**
 
-**Implementation Strategy**:
-```go
-// Phase 2.3 Architecture: AI Decision Flow Integration
-type AugmentedOrchestratorService struct {
-    *OrchestratorService
-    conversationService ConversationService
-    decisionTracker     AIDecisionTracker
-}
+**CURRENT BLOCKER**: Planning domain compilation issues due to parameter mismatches
+- Issue: `domain.NewAnalysis()` expects `requestID` parameter but planning domain generates it
+- Solution: Thread `messageID` from conversation through orchestrator as `requestID`
+- Impact: Blocking all orchestrator graph persistence work
 
-func (aos *AugmentedOrchestratorService) ProcessUserRequestWithDecisionTracking(
-    ctx context.Context, 
-    request *OrchestratorRequest,
-) (*OrchestratorResult, error) {
-    // 1. Create UserRequest node linked to conversation
-    userRequest := aos.createUserRequestNode(ctx, request)
-    
-    // 2. Perform AI analysis with tracking
-    analysis := aos.aiDecisionEngine.ExploreAndAnalyzeWithTracking(ctx, request, userRequest.ID)
-    
-    // 3. Make decision with full context
-    decision := aos.aiDecisionEngine.MakeDecisionWithContext(ctx, analysis, userRequest.ID)
-    
-    // 4. Link decision to conversation and user request
-    aos.decisionTracker.LinkDecisionToConversation(ctx, decision, request.SessionID)
-    
-    // 5. Create execution plan if needed
-    if decision.Type == DecisionTypeExecute {
-        executionPlan := aos.createExecutionPlan(ctx, decision, userRequest.ID)
-        aos.linkExecutionPlanToConversation(ctx, executionPlan, request.SessionID)
-    }
+**IMMEDIATE ACTIONS NEEDED**:
+1. Fix parameter threading: ConversationBFF → Orchestrator → Planning domain
+2. Update interface signatures to accept `requestID` parameter
+3. Implement Analysis domain graph repository with TDD
+4. Follow with Decision and Execution domain repositories
+
+### 🎯 PHASE 2.5: Complete Orchestrator Graph Persistence 
+**Priority**: P1 - **Systematic TDD Implementation**
+
+**Implementation Phases**:
+1. **Analysis Domain Graph Persistence** (RED/GREEN/REFACTOR)
+2. **Decision Domain Graph Persistence** (RED/GREEN/REFACTOR)  
+3. **Execution Domain Graph Persistence** (RED/GREEN/REFACTOR)
+4. **End-to-End Integration Testing** (Full orchestrator flow validation)
     
     return result, nil
 }
