@@ -3,8 +3,9 @@ package testHelpers
 import (
 	"context"
 
-	"github.com/stretchr/testify/mock"
 	"neuromesh/internal/graph"
+
+	"github.com/stretchr/testify/mock"
 )
 
 // MockGraph provides a simple in-memory graph for testing
@@ -131,6 +132,11 @@ func (m *TestifyMockGraph) AddEdge(ctx context.Context, sourceType, sourceID, ta
 }
 
 func (m *TestifyMockGraph) GetEdges(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
+	args := m.Called(ctx, nodeType, nodeID)
+	return args.Get(0).([]map[string]interface{}), args.Error(1)
+}
+
+func (m *TestifyMockGraph) GetEdgesWithTargets(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
 	args := m.Called(ctx, nodeType, nodeID)
 	return args.Get(0).([]map[string]interface{}), args.Error(1)
 }
@@ -416,4 +422,9 @@ func (m *MockGraph) HasRelationshipType(ctx context.Context, relationshipType st
 func (m *MockGraph) Close(ctx context.Context) error {
 	// No-op close for testing
 	return nil
+}
+
+func (m *MockGraph) GetEdgesWithTargets(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
+	// Return empty edges for testing - could be enhanced to return test data if needed
+	return []map[string]interface{}{}, nil
 }

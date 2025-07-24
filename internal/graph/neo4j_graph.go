@@ -273,6 +273,51 @@ func (g *Neo4jGraph) GetEdges(ctx context.Context, nodeType, nodeID string) ([]m
 	return result.([]map[string]interface{}), nil
 }
 
+// GetEdgesWithTargets retrieves edges with target node information
+func (g *Neo4jGraph) GetEdgesWithTargets(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
+	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	query := fmt.Sprintf("MATCH (n:%s {id: $id})-[r]->(m) RETURN r, m.id as target_id, labels(m)[0] as target_type", nodeType)
+	params := map[string]interface{}{"id": nodeID}
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return nil, err
+		}
+
+		var edges []map[string]interface{}
+		for result.Next(ctx) {
+			record := result.Record()
+			rel := record.Values[0].(neo4j.Relationship)
+			targetID := record.Values[1]
+			targetType := record.Values[2]
+
+			edgeMap := map[string]interface{}{
+				"type":        rel.Type,
+				"target_id":   convertValue(targetID),
+				"target_type": convertValue(targetType),
+			}
+
+			// Add all properties with type conversion
+			for k, v := range rel.Props {
+				edgeMap[k] = convertValue(v)
+			}
+
+			edges = append(edges, edgeMap)
+		}
+
+		return edges, result.Err()
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return result.([]map[string]interface{}), nil
+}
+
 // UpdateEdge updates an edge
 func (g *Neo4jGraph) UpdateEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string, properties map[string]interface{}) error {
 	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})

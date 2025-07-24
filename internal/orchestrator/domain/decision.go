@@ -23,8 +23,8 @@ type Decision struct {
 	Action                string                 `json:"action,omitempty"`
 	Parameters            map[string]interface{} `json:"parameters,omitempty"`
 	ClarificationQuestion string                 `json:"clarification_question,omitempty"`
-	ExecutionPlan         string                 `json:"execution_plan,omitempty"`
-	AgentCoordination     string                 `json:"agent_coordination,omitempty"`
+	ExecutionPlanID       string                 `json:"execution_plan_id,omitempty"`  // Reference to graph-persisted ExecutionPlan
+	AgentCoordination     string                 `json:"agent_coordination,omitempty"` // May still be useful for coordination logic
 	Reasoning             string                 `json:"reasoning"`
 	Timestamp             time.Time              `json:"timestamp"`
 }
@@ -43,13 +43,13 @@ func NewClarifyDecision(requestID, analysisID, clarificationQuestion, reasoning 
 }
 
 // NewExecuteDecision creates a decision to execute a plan
-func NewExecuteDecision(requestID, analysisID, executionPlan, agentCoordination, reasoning string) *Decision {
+func NewExecuteDecision(requestID, analysisID, executionPlanID, agentCoordination, reasoning string) *Decision {
 	return &Decision{
 		ID:                uuid.New().String(),
 		RequestID:         requestID,
 		AnalysisID:        analysisID,
 		Type:              DecisionTypeExecute,
-		ExecutionPlan:     executionPlan,
+		ExecutionPlanID:   executionPlanID,
 		AgentCoordination: agentCoordination,
 		Reasoning:         reasoning,
 		Timestamp:         time.Now(),

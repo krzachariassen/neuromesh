@@ -14,6 +14,7 @@ import (
 	"neuromesh/internal/messaging"
 	"neuromesh/internal/orchestrator/infrastructure"
 	planningApp "neuromesh/internal/planning/application"
+	planningInfra "neuromesh/internal/planning/infrastructure"
 	userApp "neuromesh/internal/user/application"
 	userInfra "neuromesh/internal/user/infrastructure"
 )
@@ -91,8 +92,11 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	// Create infrastructure services
 	agentService := infrastructure.NewGraphAgentService(sf.graph)
 
+	// Create planning repository for structured execution plan persistence
+	executionPlanRepo := planningInfra.NewGraphExecutionPlanRepository(sf.graph)
+
 	// Create all application services with proper dependencies
-	aiDecisionEngine := planningApp.NewAIDecisionEngine(sf.aiProvider)
+	aiDecisionEngine := planningApp.NewAIDecisionEngineWithRepository(sf.aiProvider, executionPlanRepo)
 	graphExplorer := NewGraphExplorer(agentService)
 	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker)
 

@@ -7,12 +7,13 @@ import (
 
 	"neuromesh/internal/logging"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
+	planningDomain "neuromesh/internal/planning/domain"
 )
 
 // AIDecisionEngineInterface defines the interface for AI decision making
 type AIDecisionEngineInterface interface {
-	ExploreAndAnalyze(ctx context.Context, userInput, userID, requestID, agentContext string) (*orchestratorDomain.Analysis, error)
-	MakeDecision(ctx context.Context, userInput, userID, requestID string, analysis *orchestratorDomain.Analysis) (*orchestratorDomain.Decision, error)
+	ExploreAndAnalyze(ctx context.Context, userInput, userID, agentContext, requestID string) (*planningDomain.Analysis, error)
+	MakeDecision(ctx context.Context, userInput, userID string, analysis *planningDomain.Analysis, requestID string) (*orchestratorDomain.Decision, error)
 }
 
 // GraphExplorerInterface defines the interface for graph exploration
@@ -32,7 +33,7 @@ type AIConversationEngineInterface interface {
 
 // LearningServiceInterface defines the interface for learning service
 type LearningServiceInterface interface {
-	StoreInsights(ctx context.Context, userRequest string, analysis *orchestratorDomain.Analysis, decision *orchestratorDomain.Decision) error
+	StoreInsights(ctx context.Context, userRequest string, analysis *planningDomain.Analysis, decision *orchestratorDomain.Decision) error
 	AnalyzePatterns(ctx context.Context, sessionID string) (*orchestratorDomain.ConversationPattern, error)
 }
 
@@ -72,7 +73,7 @@ type OrchestratorRequest struct {
 type OrchestratorResult struct {
 	Message         string                       `json:"message"`
 	Decision        *orchestratorDomain.Decision `json:"decision"`
-	Analysis        *orchestratorDomain.Analysis `json:"analysis"`
+	Analysis        *planningDomain.Analysis     `json:"analysis"`
 	ExecutionPlanID string                       `json:"execution_plan_id,omitempty"`
 	Success         bool                         `json:"success"`
 	Error           string                       `json:"error,omitempty"`
@@ -91,7 +92,7 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 	}
 
 	// 2. Perform AI analysis and decision making
-	analysis, err := ors.aiDecisionEngine.ExploreAndAnalyze(ctx, request.UserInput, request.UserID, request.MessageID, agentContext)
+	analysis, err := ors.aiDecisionEngine.ExploreAndAnalyze(ctx, request.UserInput, request.UserID, agentContext, request.MessageID)
 	if err != nil {
 		return &OrchestratorResult{
 			Success: false,
@@ -99,7 +100,7 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		}, nil
 	}
 
-	decision, err := ors.aiDecisionEngine.MakeDecision(ctx, request.UserInput, request.UserID, request.MessageID, analysis)
+	decision, err := ors.aiDecisionEngine.MakeDecision(ctx, request.UserInput, request.UserID, analysis, request.MessageID)
 	if err != nil {
 		return &OrchestratorResult{
 			Success: false,
@@ -128,8 +129,16 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		} else if len(analysis.RequiredAgents) > 0 {
 			// AI-native execution: Use dedicated execution engine for agent coordination
 			ors.logger.Info("🚀 Using AI execution engine with agents", "agents", analysis.RequiredAgents)
+
+			// For now, use ExecutionPlanID as the plan text (backward compatibility)
+			// TODO: In future iterations, retrieve structured plan and convert to execution steps
+			executionPlan := decision.ExecutionPlanID
+			if executionPlan == "" {
+				executionPlan = "No execution plan available"
+			}
+
 			// Use injected AI execution engine for agent coordination
-			executionResult, err := ors.aiExecutionEngine.ExecuteWithAgents(ctx, decision.ExecutionPlan, request.UserInput, request.UserID, agentContext)
+			executionResult, err := ors.aiExecutionEngine.ExecuteWithAgents(ctx, executionPlan, request.UserInput, request.UserID, agentContext)
 			if err != nil {
 				ors.logger.Error("❌ AI-native execution failed", err)
 				result.Success = false
@@ -140,7 +149,7 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 			}
 		} else {
 			ors.logger.Info("📝 No agents required, using execution plan")
-			result.Message = decision.ExecutionPlan
+			result.Message = decision.ExecutionPlanID
 		}
 	} else {
 		ors.logger.Warn("❓ Unknown decision type", "type", decision.Type)

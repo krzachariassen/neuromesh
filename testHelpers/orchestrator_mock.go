@@ -3,9 +3,11 @@ package testHelpers
 import (
 	"context"
 
-	"github.com/stretchr/testify/mock"
 	"neuromesh/internal/execution/domain"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
+	planningDomain "neuromesh/internal/planning/domain"
+
+	"github.com/stretchr/testify/mock"
 )
 
 // MockGraphExplorer provides a testify-based mock for graph explorer operations
@@ -18,14 +20,14 @@ func NewMockGraphExplorer() *MockGraphExplorer {
 	return &MockGraphExplorer{}
 }
 
-func (m *MockGraphExplorer) ExploreRequest(ctx context.Context, request string) (*orchestratorDomain.Analysis, error) {
+func (m *MockGraphExplorer) ExploreRequest(ctx context.Context, request string) (*planningDomain.Analysis, error) {
 	args := m.Called(ctx, request)
-	return args.Get(0).(*orchestratorDomain.Analysis), args.Error(1)
+	return args.Get(0).(*planningDomain.Analysis), args.Error(1)
 }
 
-func (m *MockGraphExplorer) GetContextualAgents(ctx context.Context, request string) ([]*orchestratorDomain.Analysis, error) {
+func (m *MockGraphExplorer) GetContextualAgents(ctx context.Context, request string) ([]*planningDomain.Analysis, error) {
 	args := m.Called(ctx, request)
-	return args.Get(0).([]*orchestratorDomain.Analysis), args.Error(1)
+	return args.Get(0).([]*planningDomain.Analysis), args.Error(1)
 }
 
 // MockExecutionCoordinator provides a testify-based mock for execution coordinator operations
