@@ -24,9 +24,9 @@ func TestAIExecutionEngine_AgentResultStorage(t *testing.T) {
 		correlationTracker := &infrastructure.CorrelationTracker{}
 
 		// Test that constructor with repository works
-		engine := NewAIExecutionEngineWithRepository(realAIProvider, mockMessageBus, correlationTracker, mockRepo)
+		engine := NewAIExecutionEngine(realAIProvider, mockMessageBus, correlationTracker, mockRepo)
 		require.NotNil(t, engine)
-		
+
 		// Verify repository is set by checking if it's accessible (indirect verification)
 		// This confirms the constructor properly sets the repository field
 		assert.NotNil(t, engine, "Engine should be created successfully with repository")
@@ -39,7 +39,7 @@ func TestAIExecutionEngine_AgentResultStorage(t *testing.T) {
 		realAIProvider := testHelpers.SetupRealAIProvider(t) // Use real AI provider for authentic testing
 		correlationTracker := &infrastructure.CorrelationTracker{}
 
-		engine := NewAIExecutionEngineWithRepository(realAIProvider, mockMessageBus, correlationTracker, mockRepo)
+		engine := NewAIExecutionEngine(realAIProvider, mockMessageBus, correlationTracker, mockRepo)
 
 		// Create a mock agent response
 		agentResponse := &messaging.AgentToAIMessage{
@@ -47,7 +47,7 @@ func TestAIExecutionEngine_AgentResultStorage(t *testing.T) {
 			Content:       "Successfully processed data",
 			CorrelationID: "step-1",
 			Context: map[string]interface{}{
-				"execution_time": 2.5,
+				"execution_time":    2.5,
 				"records_processed": 100,
 			},
 		}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	executionDomain "neuromesh/internal/execution/domain"
 	"neuromesh/internal/logging"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	planningDomain "neuromesh/internal/planning/domain"
@@ -43,6 +44,8 @@ type OrchestratorService struct {
 	aiDecisionEngine  AIDecisionEngineInterface
 	graphExplorer     GraphExplorerInterface
 	aiExecutionEngine AIExecutionEngineInterface
+	resultSynthesizer executionDomain.ResultSynthesizer
+	repository        planningDomain.ExecutionPlanRepository
 	logger            logging.Logger
 }
 
@@ -51,12 +54,16 @@ func NewOrchestratorService(
 	aiDecisionEngine AIDecisionEngineInterface,
 	graphExplorer GraphExplorerInterface,
 	aiExecutionEngine AIExecutionEngineInterface,
+	resultSynthesizer executionDomain.ResultSynthesizer,
+	repository planningDomain.ExecutionPlanRepository,
 	logger logging.Logger,
 ) *OrchestratorService {
 	return &OrchestratorService{
 		aiDecisionEngine:  aiDecisionEngine,
 		graphExplorer:     graphExplorer,
 		aiExecutionEngine: aiExecutionEngine,
+		resultSynthesizer: resultSynthesizer,
+		repository:        repository,
 		logger:            logger,
 	}
 }
@@ -205,4 +212,41 @@ func (ors *OrchestratorService) isOrchestratorMetaQuery(userInput string) bool {
 func (ors *OrchestratorService) handleMetaQuery(ctx context.Context, userInput, agentContext string) string {
 	// Simple implementation for now
 	return fmt.Sprintf("This is a meta-query about the orchestrator system. Available agents: %s", agentContext)
+}
+
+// ProcessWithSynthesis processes a request and synthesizes results from an execution plan
+func (ors *OrchestratorService) ProcessWithSynthesis(ctx context.Context, planID, userInput, userID string) (string, error) {
+	if ors.resultSynthesizer == nil {
+		return "", fmt.Errorf("result synthesizer not configured")
+	}
+
+	// Use the result synthesizer to synthesize agent results
+	synthesizedResult, err := ors.resultSynthesizer.SynthesizeResults(ctx, planID)
+	if err != nil {
+		return "", fmt.Errorf("failed to synthesize results for plan %s: %w", planID, err)
+	}
+
+	return synthesizedResult, nil
+}
+
+// IsExecutionComplete checks if all steps in an execution plan are complete
+func (ors *OrchestratorService) IsExecutionComplete(ctx context.Context, planID string) (bool, error) {
+	if ors.repository == nil {
+		return false, fmt.Errorf("repository not configured")
+	}
+
+	// Get the execution plan
+	plan, err := ors.repository.GetByID(ctx, planID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get execution plan %s: %w", planID, err)
+	}
+
+	// Check if all steps are completed
+	for _, step := range plan.Steps {
+		if step.Status != planningDomain.ExecutionStepStatusCompleted {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }

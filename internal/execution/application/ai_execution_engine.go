@@ -29,17 +29,8 @@ type AIExecutionEngine struct {
 	repository         planningDomain.ExecutionPlanRepository
 }
 
-// NewAIExecutionEngine creates a new AI execution engine
-func NewAIExecutionEngine(aiProvider aiDomain.AIProvider, aiMessageBus messaging.AIMessageBus, correlationTracker *infrastructure.CorrelationTracker) *AIExecutionEngine {
-	return &AIExecutionEngine{
-		aiProvider:         aiProvider,
-		aiMessageBus:       aiMessageBus,
-		correlationTracker: correlationTracker,
-	}
-}
-
-// NewAIExecutionEngineWithRepository creates a new AI execution engine with repository for result storage
-func NewAIExecutionEngineWithRepository(aiProvider aiDomain.AIProvider, aiMessageBus messaging.AIMessageBus, correlationTracker *infrastructure.CorrelationTracker, repository planningDomain.ExecutionPlanRepository) *AIExecutionEngine {
+// NewAIExecutionEngine creates a new AI execution engine with repository for result storage
+func NewAIExecutionEngine(aiProvider aiDomain.AIProvider, aiMessageBus messaging.AIMessageBus, correlationTracker *infrastructure.CorrelationTracker, repository planningDomain.ExecutionPlanRepository) *AIExecutionEngine {
 	return &AIExecutionEngine{
 		aiProvider:         aiProvider,
 		aiMessageBus:       aiMessageBus,
@@ -305,7 +296,7 @@ func (e *AIExecutionEngine) storeAgentResult(ctx context.Context, agentResponse 
 
 	// Extract step ID from correlation ID (format: step-1, step-2, etc.)
 	stepID := agentResponse.CorrelationID
-	
+
 	// Determine result status based on agent response
 	status := executionDomain.AgentResultStatusSuccess
 	if agentResponse.Context != nil {
@@ -316,7 +307,7 @@ func (e *AIExecutionEngine) storeAgentResult(ctx context.Context, agentResponse 
 
 	// Create agent result
 	agentResult := executionDomain.NewAgentResultWithStatus(
-		stepID,           // ExecutionStepID
+		stepID, // ExecutionStepID
 		agentResponse.AgentID,
 		agentResponse.Content,
 		agentResponse.Context, // Metadata

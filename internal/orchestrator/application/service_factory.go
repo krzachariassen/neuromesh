@@ -98,13 +98,18 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	// Create all application services with proper dependencies
 	aiDecisionEngine := planningApp.NewAIDecisionEngineWithRepository(sf.aiProvider, executionPlanRepo)
 	graphExplorer := NewGraphExplorer(agentService)
-	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker)
+	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker, executionPlanRepo)
+	
+	// Create result synthesizer for intelligent result combination
+	resultSynthesizer := executionApp.NewAIResultSynthesizer(sf.aiProvider, executionPlanRepo)
 
 	// Wire everything together (without learning service for now - following YAGNI)
 	return NewOrchestratorService(
 		aiDecisionEngine,
 		graphExplorer,
 		aiExecutionEngine,
+		resultSynthesizer,
+		executionPlanRepo,
 		sf.logger,
 	)
 }

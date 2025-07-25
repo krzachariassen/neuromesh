@@ -36,12 +36,12 @@ func TestAIResultSynthesizer(t *testing.T) {
 
 		// Create test execution plan with agent results
 		planID := "healthcare-plan-123"
-		
+
 		// First create and store the execution plan with steps
 		plan := createTestExecutionPlan(planID)
 		err := mockRepo.Create(context.Background(), plan)
 		require.NoError(t, err)
-		
+
 		agentResults := createHealthcareAgentResults(planID)
 
 		// Store agent results in mock repository
@@ -75,12 +75,12 @@ func TestAIResultSynthesizer(t *testing.T) {
 
 		// Create test data
 		planID := "plan-456"
-		
+
 		// Create and store execution plan with steps
 		plan := createTestExecutionPlan(planID)
 		err := mockRepo.Create(context.Background(), plan)
 		require.NoError(t, err)
-		
+
 		agentResults := createHealthcareAgentResults(planID)
 
 		// Store agent results
@@ -109,7 +109,7 @@ func TestAIResultSynthesizer(t *testing.T) {
 		synthesizer := NewAIResultSynthesizer(realAIProvider, mockRepo)
 
 		planID := "partial-plan-789"
-		
+
 		// Create execution plan with steps
 		plan := &planningDomain.ExecutionPlan{
 			ID:   planID,
@@ -133,10 +133,10 @@ func TestAIResultSynthesizer(t *testing.T) {
 				},
 			},
 		}
-		
+
 		err := mockRepo.Create(context.Background(), plan)
 		require.NoError(t, err)
-		
+
 		agentResults := []*executionDomain.AgentResult{
 			{
 				ID:              "result-1",
@@ -233,9 +233,9 @@ func createHealthcareAgentResults(planID string) []*executionDomain.AgentResult 
 			Content:         "Identified 5 significant patterns in blood pressure trends across different age groups. Notable finding: 35% increase in hypertension cases in patients over 50.",
 			Status:          executionDomain.AgentResultStatusSuccess,
 			Metadata: map[string]interface{}{
-				"patterns_found":      5,
-				"hypertension_rate":   0.35,
-				"confidence_level":    0.87,
+				"patterns_found":    5,
+				"hypertension_rate": 0.35,
+				"confidence_level":  0.87,
 			},
 			Timestamp: time.Now(),
 		},

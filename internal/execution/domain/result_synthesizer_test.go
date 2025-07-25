@@ -23,7 +23,7 @@ func TestResultSynthesizer(t *testing.T) {
 			AgentResults:    []*AgentResult{},
 			CreatedAt:       time.Now(),
 		}
-		
+
 		require.NotNil(t, ctx)
 		assert.Equal(t, "plan-123", ctx.ExecutionPlanID)
 		assert.Empty(t, ctx.AgentResults)
@@ -59,9 +59,9 @@ func TestResultSynthesizer(t *testing.T) {
 			AgentResults:    []*AgentResult{},
 			CreatedAt:       time.Now(),
 			Metadata: map[string]interface{}{
-				"user_request": "Analyze healthcare data",
+				"user_request":   "Analyze healthcare data",
 				"execution_type": "multi_agent",
-				"priority": "high",
+				"priority":       "high",
 			},
 		}
 
@@ -88,10 +88,10 @@ func TestResultSynthesizer(t *testing.T) {
 
 	t.Run("should_manage_metadata", func(t *testing.T) {
 		ctx := NewSynthesisContext("plan-123", []*AgentResult{})
-		
+
 		ctx.AddMetadata("user_request", "Analyze healthcare data")
 		ctx.AddMetadata("priority", "high")
-		
+
 		assert.Equal(t, "Analyze healthcare data", ctx.Metadata["user_request"])
 		assert.Equal(t, "high", ctx.Metadata["priority"])
 	})
@@ -105,7 +105,7 @@ func TestResultSynthesizer(t *testing.T) {
 
 		ctx := NewSynthesisContext("plan-123", results)
 		successful := ctx.GetSuccessfulResults()
-		
+
 		assert.Len(t, successful, 2)
 		assert.Equal(t, "result-1", successful[0].ID)
 		assert.Equal(t, "result-3", successful[1].ID)

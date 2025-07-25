@@ -81,7 +81,11 @@ func (r *ResponseParser) ExtractCategory(analysis string) string {
 
 // ExtractRequiredAgents parses required agents from analysis
 func (r *ResponseParser) ExtractRequiredAgents(analysis string) []string {
+	// Try both formats - with underscore and with space
 	agentsStr := r.ExtractSection(analysis, "Required_Agents:")
+	if agentsStr == "" {
+		agentsStr = r.ExtractSection(analysis, "Required Agents:")
+	}
 	if agentsStr == "" {
 		return []string{}
 	}

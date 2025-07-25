@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"neuromesh/internal/messaging"
+	"neuromesh/internal/orchestrator/infrastructure"
 
 	"github.com/stretchr/testify/mock"
 )
@@ -103,4 +104,9 @@ func (m *MockAIMessageBus) GetConversationHistory(ctx context.Context, correlati
 func (m *MockAIMessageBus) PrepareAgentQueue(ctx context.Context, agentID string) error {
 	args := m.Called(ctx, agentID)
 	return args.Error(0)
+}
+
+// NewMockCorrelationTracker creates a new mock correlation tracker instance
+func NewMockCorrelationTracker() *infrastructure.CorrelationTracker {
+	return infrastructure.NewCorrelationTracker()
 }

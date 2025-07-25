@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -157,9 +158,14 @@ func (r *GraphConversationRepository) AddMessage(ctx context.Context, conversati
 		"timestamp":       formatTime(message.Timestamp),
 	}
 
-	// Only add metadata if it's not nil and not empty
-	if message.Metadata != nil && len(message.Metadata) > 0 {
-		properties["metadata"] = message.Metadata
+	// Only add metadata if it's not empty
+	if len(message.Metadata) > 0 {
+		// Neo4j can't handle nested maps, so serialize to JSON string
+		metadataJSON, err := json.Marshal(message.Metadata)
+		if err != nil {
+			return fmt.Errorf("failed to serialize metadata: %w", err)
+		}
+		properties["metadata"] = string(metadataJSON)
 	}
 
 	if err := r.graph.AddNode(ctx, NodeTypeMessage, message.ID, properties); err != nil {
@@ -427,10 +433,17 @@ func (r *GraphConversationRepository) mapToMessage(props map[string]interface{})
 		return nil, fmt.Errorf("failed to parse timestamp: %w", err)
 	}
 
-	// Handle metadata (may be nil)
+	// Handle metadata (may be nil or JSON string)
 	metadata := make(map[string]interface{})
 	if metadataRaw, exists := props["metadata"]; exists && metadataRaw != nil {
-		if metadataMap, ok := metadataRaw.(map[string]interface{}); ok {
+		if metadataJSON, ok := metadataRaw.(string); ok {
+			// Metadata is stored as JSON string, deserialize it
+			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+				// If deserialization fails, keep metadata empty (don't fail the whole operation)
+				metadata = make(map[string]interface{})
+			}
+		} else if metadataMap, ok := metadataRaw.(map[string]interface{}); ok {
+			// Backward compatibility for old format (shouldn't happen but just in case)
 			metadata = metadataMap
 		}
 	}

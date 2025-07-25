@@ -9,6 +9,8 @@ import (
 	"neuromesh/internal/logging"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	planningApplication "neuromesh/internal/planning/application"
+	planningDomain "neuromesh/internal/planning/domain"
+	"neuromesh/testHelpers"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -31,6 +33,26 @@ type MockAIExecutionEngine struct {
 func (m *MockAIExecutionEngine) ExecuteWithAgents(ctx context.Context, executionPlan, userInput, userID, agentContext string) (string, error) {
 	args := m.Called(ctx, executionPlan, userInput, userID, agentContext)
 	return args.String(0), args.Error(1)
+}
+
+type MockAIDecisionEngine struct {
+	mock.Mock
+}
+
+func (m *MockAIDecisionEngine) ExploreAndAnalyze(ctx context.Context, userInput, userID, agentContext, requestID string) (*planningDomain.Analysis, error) {
+	args := m.Called(ctx, userInput, userID, agentContext, requestID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*planningDomain.Analysis), args.Error(1)
+}
+
+func (m *MockAIDecisionEngine) MakeDecision(ctx context.Context, userInput, userID string, analysis *planningDomain.Analysis, requestID string) (*orchestratorDomain.Decision, error) {
+	args := m.Called(ctx, userInput, userID, analysis, requestID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*orchestratorDomain.Decision), args.Error(1)
 }
 
 // setupRealAIProvider creates a real OpenAI provider for testing
@@ -60,9 +82,13 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
 		mockExecutionEngine := &MockAIExecutionEngine{}
+		
+		// Add missing dependencies for the updated constructor
+		mockSynthesizer := testHelpers.NewMockResultSynthesizer()
+		mockRepo := testHelpers.NewMockExecutionPlanRepository()
 
 		logger, _ := logging.NewLogger(false)
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, logger)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, mockSynthesizer, mockRepo, logger)
 
 		// Test data
 		request := &OrchestratorRequest{
@@ -101,9 +127,13 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
 		mockExecutionEngine := &MockAIExecutionEngine{}
+		
+		// Add missing dependencies for the updated constructor
+		mockSynthesizer := testHelpers.NewMockResultSynthesizer()
+		mockRepo := testHelpers.NewMockExecutionPlanRepository()
 
 		logger, _ := logging.NewLogger(false)
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, logger)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, mockSynthesizer, mockRepo, logger)
 
 		// Test data
 		request := &OrchestratorRequest{
@@ -149,9 +179,13 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
 		mockExecutionEngine := &MockAIExecutionEngine{}
+		
+		// Add missing dependencies for the updated constructor
+		mockSynthesizer := testHelpers.NewMockResultSynthesizer()
+		mockRepo := testHelpers.NewMockExecutionPlanRepository()
 
 		logger, _ := logging.NewLogger(false)
-		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, logger)
+		service := NewOrchestratorService(aiEngine, mockExplorer, mockExecutionEngine, mockSynthesizer, mockRepo, logger)
 
 		request := &OrchestratorRequest{
 			UserInput: "Deploy app",

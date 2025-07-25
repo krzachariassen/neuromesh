@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	conversationApp "neuromesh/internal/conversation/application"
@@ -191,11 +192,10 @@ func (w *ConversationAwareWebBFF) buildAssistantMetadata(aiResponse *orchestrato
 		metadata["analysis_intent"] = aiResponse.Analysis.Intent
 		metadata["analysis_confidence"] = int64(aiResponse.Analysis.Confidence) // Ensure it's int64 for Neo4j
 
-		// Handle required agents array - ensure it's not nil
+		// Handle required agents array - convert to string for Neo4j compatibility
 		if aiResponse.Analysis.RequiredAgents != nil && len(aiResponse.Analysis.RequiredAgents) > 0 {
-			metadata["required_agents"] = aiResponse.Analysis.RequiredAgents
+			metadata["required_agents"] = strings.Join(aiResponse.Analysis.RequiredAgents, ", ")
 		} else {
-			// Don't store empty arrays in Neo4j
 			metadata["required_agents"] = ""
 		}
 	}
