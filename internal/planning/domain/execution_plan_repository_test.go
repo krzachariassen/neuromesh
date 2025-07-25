@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	executionDomain "neuromesh/internal/execution/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -65,6 +67,36 @@ func (m *MockExecutionPlanRepository) UpdateStep(ctx context.Context, step *Exec
 func (m *MockExecutionPlanRepository) AssignStepToAgent(ctx context.Context, stepID, agentID string) error {
 	args := m.Called(ctx, stepID, agentID)
 	return args.Error(0)
+}
+
+// Agent Result operations - Mock implementations for the new interface methods
+func (m *MockExecutionPlanRepository) StoreAgentResult(ctx context.Context, result *executionDomain.AgentResult) error {
+	args := m.Called(ctx, result)
+	return args.Error(0)
+}
+
+func (m *MockExecutionPlanRepository) GetAgentResultByID(ctx context.Context, resultID string) (*executionDomain.AgentResult, error) {
+	args := m.Called(ctx, resultID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*executionDomain.AgentResult), args.Error(1)
+}
+
+func (m *MockExecutionPlanRepository) GetAgentResultsByExecutionStep(ctx context.Context, stepID string) ([]*executionDomain.AgentResult, error) {
+	args := m.Called(ctx, stepID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*executionDomain.AgentResult), args.Error(1)
+}
+
+func (m *MockExecutionPlanRepository) GetAgentResultsByExecutionPlan(ctx context.Context, planID string) ([]*executionDomain.AgentResult, error) {
+	args := m.Called(ctx, planID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*executionDomain.AgentResult), args.Error(1)
 }
 
 func TestExecutionPlanRepository_Interface(t *testing.T) {

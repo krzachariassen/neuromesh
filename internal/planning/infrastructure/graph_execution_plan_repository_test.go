@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	executionDomain "neuromesh/internal/execution/domain"
 	"neuromesh/internal/planning/domain"
 )
 
@@ -235,4 +236,164 @@ func TestGraphExecutionPlanRepository_EnsureSchema(t *testing.T) {
 	// Should be idempotent
 	err = repo.EnsureSchema(ctx)
 	assert.NoError(t, err)
+}
+
+// RED Phase: Tests for AgentResult graph storage - these will fail until implemented
+func TestGraphExecutionPlanRepository_StoreAgentResult_ShouldPersistToGraph(t *testing.T) {
+	ctx := context.Background()
+	graph := setupTestGraph(t)
+	repo := NewGraphExecutionPlanRepository(graph)
+
+	// Create a plan with a step first
+	plan := domain.NewExecutionPlan("Test Plan", "Test description", domain.ExecutionPlanPriorityMedium)
+	step := domain.NewExecutionStep("Test Step", "Test step description", "test-agent-123")
+	plan.AddStep(step)
+
+	err := repo.Create(ctx, plan)
+	require.NoError(t, err)
+
+	// Create an agent result
+	metadata := map[string]interface{}{
+		"execution_time": 2.5,
+		"confidence":     0.95,
+	}
+	result := executionDomain.NewAgentResult(step.ID, "test-agent-123", "Diagnostic analysis complete", metadata)
+
+	// Act: Store the agent result
+	err = repo.StoreAgentResult(ctx, result)
+
+	// Assert: Should store without error
+	require.NoError(t, err, "StoreAgentResult should persist agent result to graph")
+
+	// Verify result can be retrieved by ID
+	retrievedResult, err := repo.GetAgentResultByID(ctx, result.ID)
+	require.NoError(t, err, "Should be able to retrieve stored agent result")
+	assert.Equal(t, result.ID, retrievedResult.ID)
+	assert.Equal(t, result.ExecutionStepID, retrievedResult.ExecutionStepID)
+	assert.Equal(t, result.AgentID, retrievedResult.AgentID)
+	assert.Equal(t, result.Content, retrievedResult.Content)
+	assert.Equal(t, result.Status, retrievedResult.Status)
+}
+
+func TestGraphExecutionPlanRepository_GetAgentResultsByExecutionStep_ShouldReturnResultsForStep(t *testing.T) {
+	ctx := context.Background()
+	graph := setupTestGraph(t)
+	repo := NewGraphExecutionPlanRepository(graph)
+
+	// Create plan with multiple steps
+	plan := domain.NewExecutionPlan("Multi-Agent Plan", "Test plan with multiple agents", domain.ExecutionPlanPriorityHigh)
+	step1 := domain.NewExecutionStep("Symptom Analysis", "Analyze patient symptoms", "symptom-agent")
+	step2 := domain.NewExecutionStep("Diagnostic Analysis", "Perform diagnostic analysis", "diagnostic-agent")
+	plan.AddStep(step1)
+	plan.AddStep(step2)
+
+	err := repo.Create(ctx, plan)
+	require.NoError(t, err)
+
+	// Create multiple results for step1
+	result1 := executionDomain.NewAgentResult(step1.ID, "symptom-agent", "Initial symptom analysis", nil)
+	result2 := executionDomain.NewAgentResultWithStatus(step1.ID, "symptom-agent", "Refined analysis", nil, executionDomain.AgentResultStatusPartial)
+
+	// Create one result for step2
+	result3 := executionDomain.NewAgentResult(step2.ID, "diagnostic-agent", "Diagnostic complete", nil)
+
+	err = repo.StoreAgentResult(ctx, result1)
+	require.NoError(t, err)
+	err = repo.StoreAgentResult(ctx, result2)
+	require.NoError(t, err)
+	err = repo.StoreAgentResult(ctx, result3)
+	require.NoError(t, err)
+
+	// Act: Get results for step1 only
+	step1Results, err := repo.GetAgentResultsByExecutionStep(ctx, step1.ID)
+
+	// Assert: Should return only step1 results
+	require.NoError(t, err)
+	assert.Len(t, step1Results, 2, "Should return exactly 2 results for step1")
+
+	// Verify all results belong to step1
+	for _, result := range step1Results {
+		assert.Equal(t, step1.ID, result.ExecutionStepID)
+	}
+}
+
+func TestGraphExecutionPlanRepository_GetAgentResultsByExecutionPlan_ShouldReturnAllPlanResults(t *testing.T) {
+	ctx := context.Background()
+	graph := setupTestGraph(t)
+	repo := NewGraphExecutionPlanRepository(graph)
+
+	// Create plan with multiple steps
+	plan := domain.NewExecutionPlan("Healthcare Diagnosis", "Multi-agent diagnostic plan", domain.ExecutionPlanPriorityHigh)
+	step1 := domain.NewExecutionStep("Symptom Analysis", "Analyze symptoms", "symptom-agent")
+	step2 := domain.NewExecutionStep("Lab Analysis", "Analyze lab results", "lab-agent")
+	step3 := domain.NewExecutionStep("Diagnosis", "Create diagnosis", "diagnostic-agent")
+	plan.AddStep(step1)
+	plan.AddStep(step2)
+	plan.AddStep(step3)
+
+	err := repo.Create(ctx, plan)
+	require.NoError(t, err)
+
+	// Create results for all steps
+	result1 := executionDomain.NewAgentResult(step1.ID, "symptom-agent", "Symptom analysis: chest pain, dyspnea", nil)
+	result2 := executionDomain.NewAgentResult(step2.ID, "lab-agent", "Lab results: elevated troponin", nil)
+	result3 := executionDomain.NewAgentResult(step3.ID, "diagnostic-agent", "Diagnosis: Acute myocardial infarction", nil)
+
+	err = repo.StoreAgentResult(ctx, result1)
+	require.NoError(t, err)
+	err = repo.StoreAgentResult(ctx, result2)
+	require.NoError(t, err)
+	err = repo.StoreAgentResult(ctx, result3)
+	require.NoError(t, err)
+
+	// Act: Get all results for the plan
+	planResults, err := repo.GetAgentResultsByExecutionPlan(ctx, plan.ID)
+
+	// Assert: Should return all results across all steps
+	require.NoError(t, err)
+	assert.Len(t, planResults, 3, "Should return all 3 results from the execution plan")
+
+	// Verify results are from correct steps
+	stepIDs := []string{step1.ID, step2.ID, step3.ID}
+	resultStepIDs := make([]string, len(planResults))
+	for i, result := range planResults {
+		resultStepIDs[i] = result.ExecutionStepID
+	}
+
+	for _, stepID := range stepIDs {
+		assert.Contains(t, resultStepIDs, stepID, "Should contain result from step %s", stepID)
+	}
+}
+
+func TestGraphExecutionPlanRepository_StoreAgentResult_ValidationError_ShouldReturnError(t *testing.T) {
+	ctx := context.Background()
+	graph := setupTestGraph(t)
+	repo := NewGraphExecutionPlanRepository(graph)
+
+	// Create invalid agent result (missing required fields)
+	invalidResult := &executionDomain.AgentResult{
+		ID:      "", // Missing ID
+		Content: "Some content",
+	}
+
+	// Act: Try to store invalid result
+	err := repo.StoreAgentResult(ctx, invalidResult)
+
+	// Assert: Should return validation error
+	require.Error(t, err, "Should return error for invalid agent result")
+	assert.Contains(t, err.Error(), "validation", "Error should mention validation")
+}
+
+func TestGraphExecutionPlanRepository_GetAgentResultByID_NotFound_ShouldReturnError(t *testing.T) {
+	ctx := context.Background()
+	graph := setupTestGraph(t)
+	repo := NewGraphExecutionPlanRepository(graph)
+
+	// Act: Try to get non-existent result
+	result, err := repo.GetAgentResultByID(ctx, "non-existent-result-id")
+
+	// Assert: Should return error and nil result
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "not found", "Error should indicate result was not found")
 }

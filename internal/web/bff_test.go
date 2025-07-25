@@ -8,7 +8,7 @@ import (
 
 	"neuromesh/internal/logging"
 	"neuromesh/internal/orchestrator/application"
-	"neuromesh/internal/orchestrator/domain"
+	planningDomain "neuromesh/internal/planning/domain"
 )
 
 // MockAIOrchestrator for testing
@@ -22,7 +22,7 @@ func (m *MockAIOrchestrator) ProcessRequest(ctx context.Context, userInput, user
 	}
 	return &application.OrchestratorResult{
 		Message: "Mock AI response for: " + userInput,
-		Analysis: &domain.Analysis{
+		Analysis: &planningDomain.Analysis{
 			Intent:     "test",
 			Confidence: 90,
 		},
@@ -36,7 +36,7 @@ func TestWebBFF_DirectAIResponse(t *testing.T) {
 		responses: map[string]*application.OrchestratorResult{
 			"Count words in hello world": {
 				Message: "I'll count the words for you. The text 'hello world' contains 2 words.",
-				Analysis: &domain.Analysis{
+				Analysis: &planningDomain.Analysis{
 					Intent:     "word_count",
 					Confidence: 95,
 				},

@@ -14,6 +14,7 @@ import (
 	"neuromesh/internal/logging"
 	orchestratorApp "neuromesh/internal/orchestrator/application"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
+	planningDomain "neuromesh/internal/planning/domain"
 	userApp "neuromesh/internal/user/application"
 	userDomain "neuromesh/internal/user/domain"
 	userInfra "neuromesh/internal/user/infrastructure"
@@ -50,7 +51,7 @@ func TestConversationAwareWebBFFWithGraph(t *testing.T) {
 			"Hello": {
 				Message: "Hi there! How can I help you today?",
 				Success: true,
-				Analysis: &orchestratorDomain.Analysis{
+				Analysis: &planningDomain.Analysis{
 					Intent:     "greeting",
 					Confidence: 95,
 					Category:   "social",
@@ -63,7 +64,7 @@ func TestConversationAwareWebBFFWithGraph(t *testing.T) {
 			"What can you do?": {
 				Message: "I can help you with various tasks. Let me know what you need!",
 				Success: true,
-				Analysis: &orchestratorDomain.Analysis{
+				Analysis: &planningDomain.Analysis{
 					Intent:     "capability_inquiry",
 					Confidence: 85,
 					Category:   "information",
@@ -200,7 +201,7 @@ func (m *MockOrchestratorImpl) ProcessRequest(ctx context.Context, userInput str
 	return &orchestratorApp.OrchestratorResult{
 		Message: "I understand your request",
 		Success: true,
-		Analysis: &orchestratorDomain.Analysis{
+		Analysis: &planningDomain.Analysis{
 			Intent:     "general",
 			Confidence: 70,
 			Category:   "general",

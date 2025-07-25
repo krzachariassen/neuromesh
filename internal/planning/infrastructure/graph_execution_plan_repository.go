@@ -2,10 +2,12 @@ package infrastructure
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	executionDomain "neuromesh/internal/execution/domain"
 	"neuromesh/internal/graph"
 	"neuromesh/internal/planning/domain"
 )
@@ -425,4 +427,191 @@ func (r *GraphExecutionPlanRepository) mapToExecutionStep(data map[string]interf
 	}
 
 	return step, nil
+}
+
+// Agent Result operations - Implementation for graph-native result synthesis
+
+// StoreAgentResult stores an agent result in the graph with relationship to execution step
+func (r *GraphExecutionPlanRepository) StoreAgentResult(ctx context.Context, result *executionDomain.AgentResult) error {
+	// Validate the agent result before storing
+	if err := result.Validate(); err != nil {
+		return fmt.Errorf("agent result validation failed: %w", err)
+	}
+
+	// Serialize metadata to JSON string for Neo4j storage
+	var metadataJSON string
+	if result.Metadata != nil && len(result.Metadata) > 0 {
+		metadataBytes, err := json.Marshal(result.Metadata)
+		if err != nil {
+			return fmt.Errorf("failed to serialize metadata: %w", err)
+		}
+		metadataJSON = string(metadataBytes)
+	} else {
+		metadataJSON = "{}"
+	}
+
+	// Create the agent result node properties
+	properties := map[string]interface{}{
+		"execution_step_id": result.ExecutionStepID,
+		"agent_id":          result.AgentID,
+		"content":           result.Content,
+		"status":            string(result.Status),
+		"metadata":          metadataJSON,
+		"timestamp":         result.Timestamp.Format(time.RFC3339Nano),
+	}
+
+	// Create the agent result node
+	if err := r.graph.AddNode(ctx, "agent_result", result.ID, properties); err != nil {
+		return fmt.Errorf("failed to create agent result node: %w", err)
+	}
+
+	// Create relationship from execution step to agent result
+	if err := r.graph.AddEdge(ctx, "execution_step", result.ExecutionStepID, "agent_result", result.ID, "HAS_RESULT", nil); err != nil {
+		return fmt.Errorf("failed to create HAS_RESULT relationship: %w", err)
+	}
+
+	return nil
+}
+
+// GetAgentResultByID retrieves a specific agent result by its ID
+func (r *GraphExecutionPlanRepository) GetAgentResultByID(ctx context.Context, resultID string) (*executionDomain.AgentResult, error) {
+	resultData, err := r.graph.GetNode(ctx, "agent_result", resultID)
+	if err != nil {
+		if strings.Contains(err.Error(), "node not found") {
+			return nil, fmt.Errorf("agent result %s not found", resultID)
+		}
+		return nil, fmt.Errorf("failed to get agent result: %w", err)
+	}
+
+	result, err := r.mapNodeDataToAgentResult(resultData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to map agent result: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetAgentResultsByExecutionStep retrieves all agent results for a specific execution step
+func (r *GraphExecutionPlanRepository) GetAgentResultsByExecutionStep(ctx context.Context, stepID string) ([]*executionDomain.AgentResult, error) {
+	// Get all edges from the execution step to agent results
+	edges, err := r.graph.GetEdgesWithTargets(ctx, "execution_step", stepID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get edges for execution step %s: %w", stepID, err)
+	}
+
+	results := make([]*executionDomain.AgentResult, 0, len(edges))
+	for _, edge := range edges {
+		// Only process HAS_RESULT relationships to agent_result nodes
+		if edgeType, ok := edge["type"].(string); ok && edgeType == "HAS_RESULT" {
+			if targetType, ok := edge["target_type"].(string); ok && targetType == "agent_result" {
+				if targetID, ok := edge["target_id"].(string); ok {
+					// Get the agent result node
+					resultData, err := r.graph.GetNode(ctx, "agent_result", targetID)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get agent result node %s: %w", targetID, err)
+					}
+
+					result, err := r.mapNodeDataToAgentResult(resultData)
+					if err != nil {
+						return nil, fmt.Errorf("failed to map agent result %s: %w", targetID, err)
+					}
+					results = append(results, result)
+				}
+			}
+		}
+	}
+
+	return results, nil
+}
+
+// GetAgentResultsByExecutionPlan retrieves all agent results for an entire execution plan
+func (r *GraphExecutionPlanRepository) GetAgentResultsByExecutionPlan(ctx context.Context, planID string) ([]*executionDomain.AgentResult, error) {
+	// First get all execution steps for the plan
+	planEdges, err := r.graph.GetEdgesWithTargets(ctx, "execution_plan", planID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get edges for execution plan %s: %w", planID, err)
+	}
+
+	results := make([]*executionDomain.AgentResult, 0)
+
+	// For each execution step, get its agent results
+	for _, planEdge := range planEdges {
+		if edgeType, ok := planEdge["type"].(string); ok && edgeType == "CONTAINS_STEP" {
+			if targetType, ok := planEdge["target_type"].(string); ok && targetType == "execution_step" {
+				if stepID, ok := planEdge["target_id"].(string); ok {
+					stepResults, err := r.GetAgentResultsByExecutionStep(ctx, stepID)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get agent results for step %s in plan %s: %w", stepID, planID, err)
+					}
+					results = append(results, stepResults...)
+				}
+			}
+		}
+	}
+
+	return results, nil
+}
+
+// mapNodeDataToAgentResult converts node data to an AgentResult domain object
+func (r *GraphExecutionPlanRepository) mapNodeDataToAgentResult(nodeData map[string]interface{}) (*executionDomain.AgentResult, error) {
+	id, ok := nodeData["id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid id in agent result")
+	}
+
+	executionStepID, ok := nodeData["execution_step_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid execution_step_id in agent result")
+	}
+
+	agentID, ok := nodeData["agent_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid agent_id in agent result")
+	}
+
+	content, ok := nodeData["content"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid content in agent result")
+	}
+
+	statusStr, ok := nodeData["status"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid status in agent result")
+	}
+	status := executionDomain.AgentResultStatus(statusStr)
+
+	timestampStr, ok := nodeData["timestamp"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid timestamp in agent result")
+	}
+
+	timestamp, err := time.Parse(time.RFC3339Nano, timestampStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse timestamp: %w", err)
+	}
+
+	// Handle metadata - deserialize from JSON string
+	var metadata map[string]interface{}
+	if metadataStr, exists := nodeData["metadata"]; exists && metadataStr != nil {
+		if metadataJSON, ok := metadataStr.(string); ok {
+			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+				return nil, fmt.Errorf("failed to deserialize metadata: %w", err)
+			}
+		}
+	}
+	if metadata == nil {
+		metadata = make(map[string]interface{})
+	}
+
+	result := &executionDomain.AgentResult{
+		ID:              id,
+		ExecutionStepID: executionStepID,
+		AgentID:         agentID,
+		Content:         content,
+		Status:          status,
+		Metadata:        metadata,
+		Timestamp:       timestamp,
+	}
+
+	return result, nil
 }

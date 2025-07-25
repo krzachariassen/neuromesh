@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	executionDomain "neuromesh/internal/execution/domain"
 	"neuromesh/internal/planning/domain"
 )
 
@@ -13,7 +14,8 @@ type MockExecutionPlanRepository struct {
 	mu            sync.RWMutex
 	plans         map[string]*domain.ExecutionPlan
 	steps         map[string][]*domain.ExecutionStep
-	analysisLinks map[string]string // analysisID -> planID
+	analysisLinks map[string]string                       // analysisID -> planID
+	agentResults  map[string]*executionDomain.AgentResult // resultID -> AgentResult
 	calls         []string
 }
 
@@ -23,6 +25,7 @@ func NewMockExecutionPlanRepository() *MockExecutionPlanRepository {
 		plans:         make(map[string]*domain.ExecutionPlan),
 		steps:         make(map[string][]*domain.ExecutionStep),
 		analysisLinks: make(map[string]string),
+		agentResults:  make(map[string]*executionDomain.AgentResult),
 		calls:         make([]string, 0),
 	}
 }
@@ -203,4 +206,74 @@ func (m *MockExecutionPlanRepository) GetLinkCount() int {
 	defer m.mu.RUnlock()
 
 	return len(m.analysisLinks)
+}
+
+// Agent Result operations - NEW for graph-native result synthesis
+
+// StoreAgentResult stores an agent result in the mock
+func (m *MockExecutionPlanRepository) StoreAgentResult(ctx context.Context, result *executionDomain.AgentResult) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("StoreAgentResult(%s)", result.ID))
+	m.agentResults[result.ID] = result
+	return nil
+}
+
+// GetAgentResultByID retrieves a specific agent result by its ID
+func (m *MockExecutionPlanRepository) GetAgentResultByID(ctx context.Context, resultID string) (*executionDomain.AgentResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("GetAgentResultByID(%s)", resultID))
+
+	result, exists := m.agentResults[resultID]
+	if !exists {
+		return nil, fmt.Errorf("agent result %s not found", resultID)
+	}
+
+	return result, nil
+}
+
+// GetAgentResultsByExecutionStep retrieves all agent results for a specific execution step
+func (m *MockExecutionPlanRepository) GetAgentResultsByExecutionStep(ctx context.Context, stepID string) ([]*executionDomain.AgentResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("GetAgentResultsByExecutionStep(%s)", stepID))
+
+	var results []*executionDomain.AgentResult
+	for _, result := range m.agentResults {
+		if result.ExecutionStepID == stepID {
+			results = append(results, result)
+		}
+	}
+
+	return results, nil
+}
+
+// GetAgentResultsByExecutionPlan retrieves all agent results for an entire execution plan
+func (m *MockExecutionPlanRepository) GetAgentResultsByExecutionPlan(ctx context.Context, planID string) ([]*executionDomain.AgentResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("GetAgentResultsByExecutionPlan(%s)", planID))
+
+	// First get all steps for the plan
+	planSteps, exists := m.steps[planID]
+	if !exists {
+		return []*executionDomain.AgentResult{}, nil
+	}
+
+	// Collect all results for all steps in the plan
+	var results []*executionDomain.AgentResult
+	for _, step := range planSteps {
+		for _, result := range m.agentResults {
+			if result.ExecutionStepID == step.ID {
+				results = append(results, result)
+			}
+		}
+	}
+
+	return results, nil
 }

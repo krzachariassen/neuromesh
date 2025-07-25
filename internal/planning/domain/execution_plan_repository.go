@@ -1,6 +1,10 @@
 package domain
 
-import "context"
+import (
+	"context"
+
+	executionDomain "neuromesh/internal/execution/domain"
+)
 
 // ExecutionPlanRepository defines the interface for execution plan persistence
 type ExecutionPlanRepository interface {
@@ -18,4 +22,10 @@ type ExecutionPlanRepository interface {
 	AddStep(ctx context.Context, step *ExecutionStep) error
 	UpdateStep(ctx context.Context, step *ExecutionStep) error
 	AssignStepToAgent(ctx context.Context, stepID, agentID string) error
+
+	// Agent Result operations - NEW for graph-native result synthesis
+	StoreAgentResult(ctx context.Context, result *executionDomain.AgentResult) error
+	GetAgentResultsByExecutionPlan(ctx context.Context, planID string) ([]*executionDomain.AgentResult, error)
+	GetAgentResultsByExecutionStep(ctx context.Context, stepID string) ([]*executionDomain.AgentResult, error)
+	GetAgentResultByID(ctx context.Context, resultID string) (*executionDomain.AgentResult, error)
 }

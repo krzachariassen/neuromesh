@@ -43,12 +43,40 @@ func (m *mockGraph) GetEdges(ctx context.Context, nodeType, nodeID string) ([]ma
 	return []map[string]interface{}{}, nil
 }
 
+func (m *mockGraph) GetEdgesWithTargets(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
+	return []map[string]interface{}{}, nil
+}
+
 func (m *mockGraph) UpdateEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string, properties map[string]interface{}) error {
 	return nil
 }
 
 func (m *mockGraph) DeleteEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string) error {
 	return nil
+}
+
+func (m *mockGraph) CreateUniqueConstraint(ctx context.Context, nodeType, property string) error {
+	return nil
+}
+
+func (m *mockGraph) CreateIndex(ctx context.Context, nodeType, property string) error {
+	return nil
+}
+
+func (m *mockGraph) DropIndex(ctx context.Context, nodeType, property string) error {
+	return nil
+}
+
+func (m *mockGraph) HasUniqueConstraint(ctx context.Context, nodeType, property string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockGraph) HasIndex(ctx context.Context, nodeType, property string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockGraph) HasRelationshipType(ctx context.Context, relationshipType string) (bool, error) {
+	return false, nil
 }
 
 func (m *mockGraph) GetStats() map[string]interface{} {

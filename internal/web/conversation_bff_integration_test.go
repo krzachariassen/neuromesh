@@ -8,6 +8,7 @@ import (
 
 	orchestratorApp "neuromesh/internal/orchestrator/application"
 	orchestratorDomain "neuromesh/internal/orchestrator/domain"
+	planningDomain "neuromesh/internal/planning/domain"
 )
 
 // TestConversationAwareWebBFFIntegration tests basic integration
@@ -39,7 +40,7 @@ func (m *MockOrchestrator) ProcessRequest(ctx context.Context, userInput string,
 	return &orchestratorApp.OrchestratorResult{
 		Message: "I understand your request",
 		Success: true,
-		Analysis: &orchestratorDomain.Analysis{
+		Analysis: &planningDomain.Analysis{
 			Intent:     "general",
 			Confidence: 70,
 		},

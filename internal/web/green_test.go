@@ -10,7 +10,7 @@ import (
 
 	"neuromesh/internal/logging"
 	"neuromesh/internal/orchestrator/application"
-	"neuromesh/internal/orchestrator/domain"
+	planningDomain "neuromesh/internal/planning/domain"
 )
 
 // TestMockOrchestrator for focused testing
@@ -19,7 +19,7 @@ type TestMockOrchestrator struct{}
 func (m *TestMockOrchestrator) ProcessRequest(ctx context.Context, userInput, userID string) (*application.OrchestratorResult, error) {
 	return &application.OrchestratorResult{
 		Message: "Test response to: " + userInput,
-		Analysis: &domain.Analysis{
+		Analysis: &planningDomain.Analysis{
 			Intent: "test_intent",
 		},
 		Success: true,
