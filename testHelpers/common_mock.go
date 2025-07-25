@@ -3,8 +3,6 @@ package testHelpers
 import (
 	"context"
 
-	aiDomain "neuromesh/internal/ai/domain"
-
 	"github.com/stretchr/testify/mock"
 )
 
@@ -60,50 +58,4 @@ func (m *MockAIOrchestrator) ProcessRequest(ctx context.Context, userID, request
 func (m *MockAIOrchestrator) GetAgentStatus(ctx context.Context, agentID string) (string, error) {
 	args := m.Called(ctx, agentID)
 	return args.String(0), args.Error(1)
-}
-
-// MockAIProvider provides a simple mock for AI provider operations
-type MockAIProvider struct {
-	response string
-	error    error
-}
-
-// NewMockAIProvider creates a new mock AI provider instance
-func NewMockAIProvider() *MockAIProvider {
-	return &MockAIProvider{}
-}
-
-// SetResponse sets the response that CallAI will return
-func (m *MockAIProvider) SetResponse(response string) {
-	m.response = response
-}
-
-// SetError sets the error that CallAI will return
-func (m *MockAIProvider) SetError(err error) {
-	m.error = err
-}
-
-// CallAI implements the AIProvider interface
-func (m *MockAIProvider) CallAI(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	if m.error != nil {
-		return "", m.error
-	}
-	if m.response != "" {
-		return m.response, nil
-	}
-	return "Mock AI response: " + userPrompt, nil
-}
-
-// GetProviderInfo implements the AIProvider interface
-func (m *MockAIProvider) GetProviderInfo() *aiDomain.ProviderInfo {
-	return &aiDomain.ProviderInfo{
-		Name:    "mock",
-		Model:   "mock-model",
-		Version: "1.0.0",
-	}
-}
-
-// Close implements the AIProvider interface
-func (m *MockAIProvider) Close() error {
-	return nil
 }
