@@ -277,3 +277,15 @@ func (m *MockExecutionPlanRepository) GetAgentResultsByExecutionPlan(ctx context
 
 	return results, nil
 }
+
+// GetStoredAgentResults returns all stored agent results for testing
+func (m *MockExecutionPlanRepository) GetStoredAgentResults() []*executionDomain.AgentResult {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	results := make([]*executionDomain.AgentResult, 0, len(m.agentResults))
+	for _, result := range m.agentResults {
+		results = append(results, result)
+	}
+	return results
+}

@@ -3,6 +3,8 @@ package testHelpers
 import (
 	"context"
 
+	aiDomain "neuromesh/internal/ai/domain"
+
 	"github.com/stretchr/testify/mock"
 )
 
@@ -79,4 +81,29 @@ func (m *MockAIProvider) SetResponse(response string) {
 // SetError sets the error that CallAI will return
 func (m *MockAIProvider) SetError(err error) {
 	m.error = err
+}
+
+// CallAI implements the AIProvider interface
+func (m *MockAIProvider) CallAI(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	if m.error != nil {
+		return "", m.error
+	}
+	if m.response != "" {
+		return m.response, nil
+	}
+	return "Mock AI response: " + userPrompt, nil
+}
+
+// GetProviderInfo implements the AIProvider interface
+func (m *MockAIProvider) GetProviderInfo() *aiDomain.ProviderInfo {
+	return &aiDomain.ProviderInfo{
+		Name:    "mock",
+		Model:   "mock-model",
+		Version: "1.0.0",
+	}
+}
+
+// Close implements the AIProvider interface
+func (m *MockAIProvider) Close() error {
+	return nil
 }

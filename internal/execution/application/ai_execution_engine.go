@@ -7,8 +7,10 @@ import (
 	"time"
 
 	aiDomain "neuromesh/internal/ai/domain"
+	executionDomain "neuromesh/internal/execution/domain"
 	"neuromesh/internal/messaging"
 	"neuromesh/internal/orchestrator/infrastructure"
+	planningDomain "neuromesh/internal/planning/domain"
 
 	"github.com/google/uuid"
 )
@@ -24,6 +26,7 @@ type AIExecutionEngine struct {
 	aiProvider         aiDomain.AIProvider
 	aiMessageBus       messaging.AIMessageBus
 	correlationTracker *infrastructure.CorrelationTracker
+	repository         planningDomain.ExecutionPlanRepository
 }
 
 // NewAIExecutionEngine creates a new AI execution engine
@@ -32,6 +35,16 @@ func NewAIExecutionEngine(aiProvider aiDomain.AIProvider, aiMessageBus messaging
 		aiProvider:         aiProvider,
 		aiMessageBus:       aiMessageBus,
 		correlationTracker: correlationTracker,
+	}
+}
+
+// NewAIExecutionEngineWithRepository creates a new AI execution engine with repository for result storage
+func NewAIExecutionEngineWithRepository(aiProvider aiDomain.AIProvider, aiMessageBus messaging.AIMessageBus, correlationTracker *infrastructure.CorrelationTracker, repository planningDomain.ExecutionPlanRepository) *AIExecutionEngine {
+	return &AIExecutionEngine{
+		aiProvider:         aiProvider,
+		aiMessageBus:       aiMessageBus,
+		correlationTracker: correlationTracker,
+		repository:         repository,
 	}
 }
 
@@ -195,6 +208,15 @@ func (e *AIExecutionEngine) waitForAgentResponseWithCorrelation(ctx context.Cont
 
 // processAgentExecutionResponse lets AI decide what to do with agent response during execution
 func (e *AIExecutionEngine) processAgentExecutionResponse(ctx context.Context, agentResponse *messaging.AgentToAIMessage, originalRequest, userID, agentContext string) (string, error) {
+	// Store agent result if repository is available
+	if e.repository != nil {
+		err := e.storeAgentResult(ctx, agentResponse)
+		if err != nil {
+			// Log error but don't fail execution - storage is supplementary
+			// In production, this would be logged properly
+		}
+	}
+
 	systemPrompt := fmt.Sprintf(`You are an AI execution engine processing an agent response during plan execution.
 
 Original user request: %s
@@ -273,4 +295,39 @@ func (e *AIExecutionEngine) extractUserResponse(response string) string {
 	}
 
 	return strings.TrimSpace(strings.Join(userResponse, "\n"))
+}
+
+// storeAgentResult stores an agent result in the repository for graph-native synthesis
+func (e *AIExecutionEngine) storeAgentResult(ctx context.Context, agentResponse *messaging.AgentToAIMessage) error {
+	if e.repository == nil {
+		return nil // No repository configured, skip storage
+	}
+
+	// Extract step ID from correlation ID (format: step-1, step-2, etc.)
+	stepID := agentResponse.CorrelationID
+	
+	// Determine result status based on agent response
+	status := executionDomain.AgentResultStatusSuccess
+	if agentResponse.Context != nil {
+		if success, ok := agentResponse.Context["success"].(bool); ok && !success {
+			status = executionDomain.AgentResultStatusFailed
+		}
+	}
+
+	// Create agent result
+	agentResult := executionDomain.NewAgentResultWithStatus(
+		stepID,           // ExecutionStepID
+		agentResponse.AgentID,
+		agentResponse.Content,
+		agentResponse.Context, // Metadata
+		status,
+	)
+
+	// Store in repository
+	err := e.repository.StoreAgentResult(ctx, agentResult)
+	if err != nil {
+		return fmt.Errorf("failed to store agent result: %w", err)
+	}
+
+	return nil
 }
