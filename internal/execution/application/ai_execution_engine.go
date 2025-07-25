@@ -320,5 +320,9 @@ func (e *AIExecutionEngine) storeAgentResult(ctx context.Context, agentResponse 
 		return fmt.Errorf("failed to store agent result: %w", err)
 	}
 
+	// TODO: Publish agent completion event for synthesis coordination
+	// This will trigger synthesis check when all agents in the plan complete
+	// Event: {"type": "agent.completed", "planID": planID, "stepID": stepID, "agentID": agentID}
+
 	return nil
 }
