@@ -1,0 +1,479 @@
+openapi: 3.0.3
+info:
+  title: NeuroMesh UI API
+  description: |
+    REST API for the NeuroMesh React UI frontend.
+    Provides endpoints for graph visualization, conversation history, execution plans, and real-time monitoring.
+  version: 1.0.0
+  contact:
+    name: NeuroMesh Team
+    url: https://github.com/krzachariassen/neuromesh
+
+servers:
+  - url: http://localhost:8081
+    description: Local development server
+
+paths:
+  /api/graph/conversation/{conversationId}:
+    get:
+      summary: Get graph data for visualization
+      description: |
+        Returns graph nodes and edges for React Flow visualization.
+        Includes user, conversation, execution plan, and agent relationships.
+      operationId: getGraphData
+      tags:
+        - Graph Visualization
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          description: Unique identifier for the conversation
+          schema:
+            type: string
+            example: "conv-123"
+      responses:
+        '200':
+          description: Graph data successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphDataResponse'
+        '400':
+          description: Invalid conversation ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/execution-plan/{planId}:
+    get:
+      summary: Get execution plan details
+      description: Returns detailed execution plan with steps and agent assignments
+      operationId: getExecutionPlan
+      tags:
+        - Execution Plans
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          description: Unique identifier for the execution plan
+          schema:
+            type: string
+            example: "plan-456"
+      responses:
+        '200':
+          description: Execution plan successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionPlanResponse'
+        '400':
+          description: Invalid plan ID
+        '404':
+          description: Execution plan not found
+        '500':
+          description: Internal server error
+
+  /api/conversations/{sessionId}:
+    get:
+      summary: Get conversation history
+      description: Returns conversation history for a specific session including messages
+      operationId: getConversationHistory
+      tags:
+        - Conversations
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Unique identifier for the session
+          schema:
+            type: string
+            example: "session-789"
+      responses:
+        '200':
+          description: Conversation history successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationHistoryResponse'
+        '400':
+          description: Invalid session ID
+        '500':
+          description: Internal server error
+
+  /api/agents/status:
+    get:
+      summary: Get agent status information
+      description: Returns status and capabilities of all registered agents
+      operationId: getAgentStatus
+      tags:
+        - Agents
+      responses:
+        '200':
+          description: Agent status successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentStatusResponse'
+        '500':
+          description: Internal server error
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns service health status
+      operationId: healthCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  service:
+                    type: string
+                    example: "conversation-aware-web-bff"
+
+components:
+  schemas:
+    GraphDataResponse:
+      type: object
+      description: Graph data for React Flow visualization
+      properties:
+        conversation_id:
+          type: string
+          description: ID of the conversation being visualized
+          example: "conv-123"
+        nodes:
+          type: array
+          description: Array of graph nodes
+          items:
+            $ref: '#/components/schemas/GraphNode'
+        edges:
+          type: array
+          description: Array of graph edges
+          items:
+            $ref: '#/components/schemas/GraphEdge'
+      required:
+        - conversation_id
+        - nodes
+        - edges
+
+    GraphNode:
+      type: object
+      description: A node in the graph visualization
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the node
+          example: "user-1"
+        type:
+          type: string
+          enum: [user, conversation, plan, step, agent, result]
+          description: Type of the node
+          example: "user"
+        data:
+          type: object
+          description: Node-specific data
+          additionalProperties: true
+          example:
+            name: "Test User"
+        position:
+          $ref: '#/components/schemas/NodePosition'
+      required:
+        - id
+        - type
+        - data
+
+    GraphEdge:
+      type: object
+      description: An edge in the graph visualization
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the edge
+          example: "edge-1"
+        source:
+          type: string
+          description: ID of the source node
+          example: "user-1"
+        target:
+          type: string
+          description: ID of the target node
+          example: "conv-123"
+        type:
+          type: string
+          enum: [created, executed, synthesized]
+          description: Type of relationship
+          example: "created"
+        data:
+          type: object
+          description: Edge-specific data
+          additionalProperties: true
+      required:
+        - id
+        - source
+        - target
+        - type
+
+    NodePosition:
+      type: object
+      description: Position of a node in the graph
+      properties:
+        x:
+          type: number
+          format: float
+          description: X coordinate
+          example: 100.0
+        y:
+          type: number
+          format: float
+          description: Y coordinate
+          example: 200.0
+      required:
+        - x
+        - y
+
+    ExecutionPlanResponse:
+      type: object
+      description: Execution plan with detailed steps
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the execution plan
+          example: "plan-456"
+        name:
+          type: string
+          description: Human-readable name
+          example: "Healthcare Analysis Plan"
+        description:
+          type: string
+          description: Detailed description
+          example: "Multi-agent plan for medical diagnosis"
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, FAILED]
+          description: Current execution status
+          example: "PENDING"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2025-07-26T10:00:00Z"
+        steps:
+          type: array
+          description: Array of execution steps
+          items:
+            $ref: '#/components/schemas/ExecutionStepData'
+      required:
+        - id
+        - name
+        - status
+        - steps
+
+    ExecutionStepData:
+      type: object
+      description: Individual execution step
+      properties:
+        step_number:
+          type: integer
+          description: Sequential step number
+          example: 1
+        name:
+          type: string
+          description: Step name
+          example: "Analyze Patient Data"
+        description:
+          type: string
+          description: Detailed step description
+          example: "Process patient records for diagnosis"
+        agent_name:
+          type: string
+          description: Name of the assigned agent
+          example: "text-processor"
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, FAILED]
+          description: Step execution status
+          example: "PENDING"
+        completed_at:
+          type: string
+          format: date-time
+          description: Completion timestamp (if completed)
+          example: "2025-07-26T10:05:00Z"
+      required:
+        - step_number
+        - name
+        - description
+        - agent_name
+        - status
+
+    ConversationHistoryResponse:
+      type: object
+      description: Conversation history for a session
+      properties:
+        session_id:
+          type: string
+          description: Session identifier
+          example: "session-789"
+        conversations:
+          type: array
+          description: Array of conversations in this session
+          items:
+            $ref: '#/components/schemas/ConversationData'
+        messages:
+          type: array
+          description: Array of messages in conversations
+          items:
+            $ref: '#/components/schemas/MessageData'
+      required:
+        - session_id
+        - conversations
+        - messages
+
+    ConversationData:
+      type: object
+      description: Conversation metadata
+      properties:
+        id:
+          type: string
+          description: Conversation identifier
+          example: "conv-123"
+        session_id:
+          type: string
+          description: Associated session ID
+          example: "session-789"
+        user_id:
+          type: string
+          description: User identifier
+          example: "user-1"
+        status:
+          type: string
+          enum: [active, completed, archived]
+          description: Conversation status
+          example: "active"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2025-07-26T10:00:00Z"
+      required:
+        - id
+        - session_id
+        - user_id
+        - status
+
+    MessageData:
+      type: object
+      description: Individual message in a conversation
+      properties:
+        id:
+          type: string
+          description: Message identifier
+          example: "msg-1"
+        conversation_id:
+          type: string
+          description: Associated conversation ID
+          example: "conv-123"
+        role:
+          type: string
+          enum: [user, assistant]
+          description: Message sender role
+          example: "user"
+        content:
+          type: string
+          description: Message content
+          example: "Hello, I need help with diagnosis"
+        metadata:
+          type: object
+          description: Additional message metadata
+          additionalProperties: true
+          example:
+            intent: "medical_help"
+            confidence: 0.95
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2025-07-26T10:01:00Z"
+      required:
+        - id
+        - conversation_id
+        - role
+        - content
+        - created_at
+
+    AgentStatusResponse:
+      type: object
+      description: Status of all agents
+      properties:
+        agents:
+          type: array
+          description: Array of agent information
+          items:
+            $ref: '#/components/schemas/AgentData'
+      required:
+        - agents
+
+    AgentData:
+      type: object
+      description: Individual agent information
+      properties:
+        name:
+          type: string
+          description: Agent name
+          example: "text-processor"
+        type:
+          type: string
+          description: Agent type/category
+          example: "processing"
+        status:
+          type: string
+          enum: [active, inactive, error]
+          description: Current agent status
+          example: "active"
+        capabilities:
+          type: array
+          description: List of agent capabilities
+          items:
+            type: string
+          example: ["text_analysis", "nlp_processing"]
+        metadata:
+          type: object
+          description: Additional agent metadata
+          additionalProperties: true
+          example:
+            last_active: "2025-07-26T10:00:00Z"
+            version: "1.0.0"
+      required:
+        - name
+        - type
+        - status
+        - capabilities
+
+    ErrorResponse:
+      type: object
+      description: Standard error response
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid conversation ID"
+        code:
+          type: string
+          description: Error code
+          example: "INVALID_INPUT"
+      required:
+        - error

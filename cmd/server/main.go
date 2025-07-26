@@ -129,7 +129,7 @@ func main() {
 	orchestratorAdapter := web.NewOrchestratorAdapter(orchestratorService)
 
 	// Create ConversationAwareWebBFF for web UI integration with conversation persistence
-	conversationAwareWebBFF := web.NewConversationAwareWebBFF(orchestratorAdapter, conversationService, userService, logger)
+	conversationAwareWebBFF := web.NewConversationAwareWebBFF(orchestratorAdapter, conversationService, userService, productionGraph, logger)
 
 	// Initialize conversation and user schemas
 	err = conversationAwareWebBFF.InitializeSchema(ctx)

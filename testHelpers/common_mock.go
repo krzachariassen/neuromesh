@@ -1,8 +1,6 @@
 package testHelpers
 
 import (
-	"context"
-
 	"github.com/stretchr/testify/mock"
 )
 
@@ -38,24 +36,4 @@ func (m *MockLogger) Warn(msg string, fields ...interface{}) {
 	args := []interface{}{msg}
 	args = append(args, fields...)
 	m.Called(args...)
-}
-
-// MockAIOrchestrator provides a testify-based mock for AI orchestrator operations
-type MockAIOrchestrator struct {
-	mock.Mock
-}
-
-// NewMockAIOrchestrator creates a new mock AI orchestrator instance
-func NewMockAIOrchestrator() *MockAIOrchestrator {
-	return &MockAIOrchestrator{}
-}
-
-func (m *MockAIOrchestrator) ProcessRequest(ctx context.Context, userID, request string) (string, error) {
-	args := m.Called(ctx, userID, request)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockAIOrchestrator) GetAgentStatus(ctx context.Context, agentID string) (string, error) {
-	args := m.Called(ctx, agentID)
-	return args.String(0), args.Error(1)
 }

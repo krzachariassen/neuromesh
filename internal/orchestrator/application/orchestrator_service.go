@@ -77,12 +77,12 @@ type OrchestratorRequest struct {
 
 // OrchestratorResult represents the orchestrator's response
 type OrchestratorResult struct {
-	Message         string                       `json:"message"`
-	Decision        *planningDomain.Decision     `json:"decision"`
-	Analysis        *planningDomain.Analysis     `json:"analysis"`
-	ExecutionPlanID string                       `json:"execution_plan_id,omitempty"`
-	Success         bool                         `json:"success"`
-	Error           string                       `json:"error,omitempty"`
+	Message         string                   `json:"message"`
+	Decision        *planningDomain.Decision `json:"decision"`
+	Analysis        *planningDomain.Analysis `json:"analysis"`
+	ExecutionPlanID string                   `json:"execution_plan_id,omitempty"`
+	Success         bool                     `json:"success"`
+	Error           string                   `json:"error,omitempty"`
 }
 
 // ProcessUserRequest is the main entry point that replaces the old ProcessRequest()

@@ -161,14 +161,14 @@ Based on this analysis, decide whether to clarify or execute.`, userID, userInpu
 		clarificationQuestion := e.responseParser.ExtractSection(response, "CLARIFICATION:")
 		reasoning := e.responseParser.ExtractSection(response, "REASONING:")
 		decision := domain.NewClarifyDecision(requestID, analysis.ID, clarificationQuestion, reasoning)
-		
+
 		// Persist decision if repository is available
 		if e.decisionRepo != nil {
 			if err := e.decisionRepo.Store(ctx, decision); err != nil {
 				return nil, fmt.Errorf("failed to store decision: %w", err)
 			}
 		}
-		
+
 		return decision, nil
 	}
 
@@ -213,18 +213,18 @@ Based on this analysis, decide whether to clarify or execute.`, userID, userInpu
 	// Return a planning recommendation that execution should happen
 	// Note: This creates a unified decision for now, but orchestrator coordinates domains
 	decision := domain.NewExecuteDecision(requestID, analysis.ID, executionPlanID, agentCoordination, reasoning)
-	
+
 	// Persist decision if repository is available
 	if e.decisionRepo != nil {
 		if err := e.decisionRepo.Store(ctx, decision); err != nil {
 			return nil, fmt.Errorf("failed to store decision: %w", err)
 		}
-		
+
 		// Link decision to analysis
 		if err := e.decisionRepo.LinkToAnalysis(ctx, decision.ID, analysis.ID); err != nil {
 			return nil, fmt.Errorf("failed to link decision to analysis: %w", err)
 		}
-		
+
 		// Link decision to execution plan if available
 		if executionPlanID != "" {
 			if err := e.decisionRepo.LinkToExecutionPlan(ctx, decision.ID, executionPlanID); err != nil {
@@ -232,7 +232,7 @@ Based on this analysis, decide whether to clarify or execute.`, userID, userInpu
 			}
 		}
 	}
-	
+
 	return decision, nil
 }
 

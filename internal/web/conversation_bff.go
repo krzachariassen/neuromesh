@@ -8,6 +8,7 @@ import (
 
 	conversationApp "neuromesh/internal/conversation/application"
 	conversationDomain "neuromesh/internal/conversation/domain"
+	"neuromesh/internal/graph"
 	"neuromesh/internal/logging"
 	orchestratorApp "neuromesh/internal/orchestrator/application"
 	userApp "neuromesh/internal/user/application"
@@ -21,6 +22,7 @@ type ConversationAwareWebBFF struct {
 	*WebBFF             // Embed existing WebBFF
 	conversationService conversationApp.ConversationService
 	userService         userApp.UserService
+	graph               graph.Graph // Add graph dependency for UI API enhancement
 	logger              logging.Logger
 }
 
@@ -29,6 +31,7 @@ func NewConversationAwareWebBFF(
 	orchestrator AIOrchestrator,
 	conversationService conversationApp.ConversationService,
 	userService userApp.UserService,
+	graph graph.Graph,
 	logger logging.Logger,
 ) *ConversationAwareWebBFF {
 	webBFF := NewWebBFF(orchestrator, logger)
@@ -37,6 +40,7 @@ func NewConversationAwareWebBFF(
 		WebBFF:              webBFF,
 		conversationService: conversationService,
 		userService:         userService,
+		graph:               graph,
 		logger:              logger,
 	}
 }

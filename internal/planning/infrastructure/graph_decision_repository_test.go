@@ -22,7 +22,7 @@ func TestGraphDecisionRepository_Store_Success(t *testing.T) {
 	// Create test decision
 	decision := domain.NewClarifyDecision(
 		"req-123",
-		"analysis-456", 
+		"analysis-456",
 		"Could you clarify what you mean?",
 		"Request is ambiguous",
 	)
@@ -175,7 +175,7 @@ func TestGraphDecisionRepository_LinkToExecutionPlan_Success(t *testing.T) {
 
 func createTestAnalysis(t *testing.T, g graph.Graph, analysisID, requestID string) {
 	ctx := context.Background()
-	
+
 	properties := map[string]interface{}{
 		"id":              analysisID,
 		"request_id":      requestID,
@@ -194,7 +194,7 @@ func createTestAnalysis(t *testing.T, g graph.Graph, analysisID, requestID strin
 
 func createTestExecutionPlan(t *testing.T, g graph.Graph, planID string) {
 	ctx := context.Background()
-	
+
 	properties := map[string]interface{}{
 		"id":          planID,
 		"name":        "Test Plan",

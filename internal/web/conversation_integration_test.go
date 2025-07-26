@@ -77,7 +77,7 @@ func TestConversationAwareWebBFFWithGraph(t *testing.T) {
 	}
 
 	// Create ConversationAwareWebBFF
-	webBFF := NewConversationAwareWebBFF(mockOrchestrator, conversationService, userService, logger)
+	webBFF := NewConversationAwareWebBFF(mockOrchestrator, conversationService, userService, testGraph, logger)
 
 	// Initialize schemas
 	err = webBFF.InitializeSchema(ctx)
