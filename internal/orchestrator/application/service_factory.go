@@ -99,7 +99,7 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	aiDecisionEngine := planningApp.NewAIDecisionEngineWithRepository(sf.aiProvider, executionPlanRepo)
 	graphExplorer := NewGraphExplorer(agentService)
 	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker, executionPlanRepo)
-	
+
 	// Create result synthesizer for intelligent result combination
 	resultSynthesizer := executionApp.NewAIResultSynthesizer(sf.aiProvider, executionPlanRepo)
 

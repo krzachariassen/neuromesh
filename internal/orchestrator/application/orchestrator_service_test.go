@@ -82,7 +82,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
 		mockExecutionEngine := &MockAIExecutionEngine{}
-		
+
 		// Add missing dependencies for the updated constructor
 		mockSynthesizer := testHelpers.NewMockResultSynthesizer()
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()
@@ -127,7 +127,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
 		mockExecutionEngine := &MockAIExecutionEngine{}
-		
+
 		// Add missing dependencies for the updated constructor
 		mockSynthesizer := testHelpers.NewMockResultSynthesizer()
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()
@@ -179,7 +179,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		// Setup mocks for other services
 		mockExplorer := &MockGraphExplorer{}
 		mockExecutionEngine := &MockAIExecutionEngine{}
-		
+
 		// Add missing dependencies for the updated constructor
 		mockSynthesizer := testHelpers.NewMockResultSynthesizer()
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()

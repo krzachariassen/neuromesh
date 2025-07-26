@@ -320,9 +320,50 @@ func (e *AIExecutionEngine) storeAgentResult(ctx context.Context, agentResponse 
 		return fmt.Errorf("failed to store agent result: %w", err)
 	}
 
-	// TODO: Publish agent completion event for synthesis coordination
-	// This will trigger synthesis check when all agents in the plan complete
-	// Event: {"type": "agent.completed", "planID": planID, "stepID": stepID, "agentID": agentID}
+	// Publish agent completion event for synthesis coordination
+	// Extract planID from context or stepID pattern
+	planID := e.extractPlanIDFromContext(agentResponse.Context, stepID)
+	if planID != "" && e.aiMessageBus != nil {
+		// Publish event asynchronously to avoid blocking agent result storage
+		go func() {
+			if err := PublishAgentCompletedEvent(ctx, e.aiMessageBus, planID, stepID, agentResponse.AgentID); err != nil {
+				// Log error but don't fail the operation
+				// In production, this would use a proper logger
+				fmt.Printf("Warning: Failed to publish agent completion event: %v\n", err)
+			}
+		}()
+	}
 
 	return nil
+}
+
+// extractPlanIDFromContext extracts plan ID from agent context or step ID
+func (e *AIExecutionEngine) extractPlanIDFromContext(context map[string]interface{}, stepID string) string {
+	// First, try to get planID from context
+	if context != nil {
+		if planID, ok := context["plan_id"].(string); ok && planID != "" {
+			return planID
+		}
+	}
+
+	// Fallback: extract from stepID pattern
+	return e.extractPlanIDFromStepID(stepID)
+}
+
+// extractPlanIDFromStepID extracts plan ID from step ID
+// This is a temporary solution - in a real system, planID should be passed explicitly
+func (e *AIExecutionEngine) extractPlanIDFromStepID(stepID string) string {
+	// For now, assume stepID format like "plan-123-step-1" or similar
+	// This is a heuristic approach - in production, planID should be explicit
+	parts := strings.Split(stepID, "-")
+	if len(parts) >= 2 {
+		// Try to find "plan-{id}" pattern
+		for i := 0; i < len(parts)-1; i++ {
+			if parts[i] == "plan" {
+				return fmt.Sprintf("plan-%s", parts[i+1])
+			}
+		}
+	}
+	// Fallback: return empty string if pattern not recognized
+	return ""
 }

@@ -41,7 +41,7 @@ func TestOrchestratorService_ResultSynthesis(t *testing.T) {
 		// Setup
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()
 		realAIProvider := testHelpers.SetupRealAIProvider(t)
-		
+
 		// Create all required dependencies
 		mockAIDecisionEngine := &MockAIDecisionEngine{}
 		mockGraphExplorer := &MockGraphExplorer{}
@@ -82,7 +82,7 @@ func TestOrchestratorService_ResultSynthesis(t *testing.T) {
 		// Setup
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()
 		realAIProvider := testHelpers.SetupRealAIProvider(t)
-		
+
 		// Create all required dependencies
 		mockAIDecisionEngine := &MockAIDecisionEngine{}
 		mockGraphExplorer := &MockGraphExplorer{}
@@ -119,7 +119,7 @@ func TestOrchestratorService_ResultSynthesis(t *testing.T) {
 		// Setup
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()
 		realAIProvider := testHelpers.SetupRealAIProvider(t)
-		
+
 		// Create all required dependencies
 		mockAIDecisionEngine := &MockAIDecisionEngine{}
 		mockGraphExplorer := &MockGraphExplorer{}

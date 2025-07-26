@@ -28,6 +28,7 @@ const (
 	MessageTypeAIToAgent     MessageType = "ai_to_agent"
 	MessageTypeAgentToAI     MessageType = "agent_to_ai"
 	MessageTypeCompletion    MessageType = "completion"
+	MessageTypeAgentCompleted MessageType = "agent.completed"
 	MessageTypeError         MessageType = "error"
 	MessageTypeInstruction   MessageType = "instruction"
 )
