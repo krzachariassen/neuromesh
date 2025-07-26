@@ -114,7 +114,7 @@ func (ewsc *EnhancedWebSocketConnection) handleChatMessage(ctx context.Context, 
 		Timestamp: time.Now(),
 		Data: ChatMessageData{
 			Content:        response.Content,
-			Role:          "assistant",
+			Role:           "assistant",
 			ConversationID: response.SessionID,
 		},
 	}
@@ -166,9 +166,9 @@ func (ewsc *EnhancedWebSocketConnection) sendPeriodicAgentUpdates(ctx context.Co
 				Timestamp: time.Now(),
 				SessionID: ewsc.sessionID,
 				Data: AgentUpdateData{
-					AgentName: "text-processor",
-					Type:      "processing",
-					Status:    "active",
+					AgentName:    "text-processor",
+					Type:         "processing",
+					Status:       "active",
 					Capabilities: []string{"text_analysis", "nlp_processing"},
 					Metadata: struct {
 						LastActive string `json:"last_active"`

@@ -143,10 +143,10 @@ func (w *ConversationAwareWebBFF) EnhancedWebSocketHandler() http.Handler {
 
 		// Create enhanced connection handler
 		enhancedConn := NewEnhancedWebSocketConnection(conn, sessionID, w)
-		
+
 		// Start handling messages (this will block until connection closes)
 		enhancedConn.Start(r.Context())
-		
+
 		w.logger.Info("Enhanced WebSocket connection closed", "session_id", sessionID)
 	})
 }

@@ -59,11 +59,11 @@ type ExecutionStartData struct {
 
 // EnhancedExecutionStepData extends ExecutionStepData with real-time fields
 type EnhancedExecutionStepData struct {
-	ExecutionStepData        // Embed existing type
-	ExecutionID       string    `json:"execution_id"`
-	StartTime         time.Time `json:"start_time"`
+	ExecutionStepData            // Embed existing type
+	ExecutionID       string     `json:"execution_id"`
+	StartTime         time.Time  `json:"start_time"`
 	EndTime           *time.Time `json:"end_time,omitempty"`
-	Result            string    `json:"result,omitempty"`
+	Result            string     `json:"result,omitempty"`
 }
 
 // ErrorData represents error information in WebSocket messages

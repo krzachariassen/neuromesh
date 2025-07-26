@@ -9,14 +9,14 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
-	testHelpers "neuromesh/testHelpers"
-	userDomain "neuromesh/internal/user/domain"
 	conversationDomain "neuromesh/internal/conversation/domain"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/orchestrator/application"
+	userDomain "neuromesh/internal/user/domain"
+	testHelpers "neuromesh/testHelpers"
 )
 
 // setupEnhancedWebSocketTest creates a properly configured BFF with mocks for enhanced WebSocket testing
@@ -70,7 +70,7 @@ func setupEnhancedWebSocketTestWithChatExpectations(t *testing.T) (*Conversation
 		Status:    userDomain.UserStatusActive,
 	}
 	userService.On("GetUser", mock.MatchedBy(func(ctx context.Context) bool { return true }), mock.AnythingOfType("string")).Return(testUser, nil)
-	
+
 	// Set up session service expectations
 	testSession := &userDomain.Session{
 		ID:     "test-session",
@@ -79,7 +79,7 @@ func setupEnhancedWebSocketTestWithChatExpectations(t *testing.T) (*Conversation
 	}
 	userService.On("GetSession", mock.MatchedBy(func(ctx context.Context) bool { return true }), mock.AnythingOfType("string")).Return(testSession, nil)
 	userService.On("CreateSession", mock.MatchedBy(func(ctx context.Context) bool { return true }), mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("time.Duration")).Return(testSession, nil)
-	
+
 	// Set up conversation service expectations
 	testConversation := &conversationDomain.Conversation{
 		ID:        "test-conversation",
@@ -106,7 +106,7 @@ func setupEnhancedWebSocketTestWithChatExpectations(t *testing.T) (*Conversation
 	}
 
 	return bff, cleanup
-}// TestEnhancedWebSocket_RED tests the enhanced WebSocket functionality (RED phase)
+} // TestEnhancedWebSocket_RED tests the enhanced WebSocket functionality (RED phase)
 func TestEnhancedWebSocket_RED(t *testing.T) {
 	t.Run("Should_Accept_WebSocket_Connections", func(t *testing.T) {
 		// GIVEN: Enhanced WebSocket handler
