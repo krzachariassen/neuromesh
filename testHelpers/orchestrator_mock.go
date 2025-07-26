@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"neuromesh/internal/execution/domain"
-	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	planningDomain "neuromesh/internal/planning/domain"
 
 	"github.com/stretchr/testify/mock"
@@ -40,7 +39,7 @@ func NewMockExecutionCoordinator() *MockExecutionCoordinator {
 	return &MockExecutionCoordinator{}
 }
 
-func (m *MockExecutionCoordinator) CreatePlan(ctx context.Context, decision *orchestratorDomain.Decision) (string, error) {
+func (m *MockExecutionCoordinator) CreatePlan(ctx context.Context, decision *planningDomain.Decision) (string, error) {
 	args := m.Called(ctx, decision)
 	return args.String(0), args.Error(1)
 }
@@ -70,15 +69,17 @@ func NewMockLearningService() *MockLearningService {
 	return &MockLearningService{}
 }
 
-func (m *MockLearningService) AnalyzePatterns(ctx context.Context, sessionID string) (*orchestratorDomain.ConversationPattern, error) {
-	args := m.Called(ctx, sessionID)
-	return args.Get(0).(*orchestratorDomain.ConversationPattern), args.Error(1)
-}
-
-func (m *MockLearningService) UpdatePattern(ctx context.Context, pattern *orchestratorDomain.ConversationPattern) error {
-	args := m.Called(ctx, pattern)
+func (m *MockLearningService) StoreInsights(ctx context.Context, userRequest string, analysis *planningDomain.Analysis, decision *planningDomain.Decision) error {
+	args := m.Called(ctx, userRequest, analysis, decision)
 	return args.Error(0)
 }
+
+func (m *MockLearningService) AnalyzePatterns(ctx context.Context, sessionID string) error {
+	args := m.Called(ctx, sessionID)
+	return args.Error(0)
+}
+
+// Remove UpdatePattern method since ConversationPattern is no longer used
 
 // MockExecutionService provides a testify-based mock for execution service operations
 type MockExecutionService struct {

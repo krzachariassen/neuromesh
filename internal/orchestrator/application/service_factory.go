@@ -94,9 +94,12 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 
 	// Create planning repository for structured execution plan persistence
 	executionPlanRepo := planningInfra.NewGraphExecutionPlanRepository(sf.graph)
+	
+	// Create decision repository for decision persistence  
+	decisionRepo := planningInfra.NewGraphDecisionRepository(sf.graph)
 
 	// Create all application services with proper dependencies
-	aiDecisionEngine := planningApp.NewAIDecisionEngineWithRepository(sf.aiProvider, executionPlanRepo)
+	aiDecisionEngine := planningApp.NewAIDecisionEngineWithRepositories(sf.aiProvider, executionPlanRepo, decisionRepo)
 	graphExplorer := NewGraphExplorer(agentService)
 	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker, executionPlanRepo)
 

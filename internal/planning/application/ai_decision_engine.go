@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	aiDomain "neuromesh/internal/ai/domain"
-	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	"neuromesh/internal/planning/domain"
 )
 
@@ -16,6 +15,7 @@ type AIDecisionEngine struct {
 	aiProvider        aiDomain.AIProvider
 	responseParser    *domain.ResponseParser
 	executionPlanRepo domain.ExecutionPlanRepository
+	decisionRepo      domain.DecisionRepository
 }
 
 // NewAIDecisionEngine creates a new AI decision engine
@@ -32,6 +32,16 @@ func NewAIDecisionEngineWithRepository(aiProvider aiDomain.AIProvider, execution
 		aiProvider:        aiProvider,
 		responseParser:    domain.NewResponseParser(),
 		executionPlanRepo: executionPlanRepo,
+	}
+}
+
+// NewAIDecisionEngineWithRepositories creates a new AI decision engine with both repositories
+func NewAIDecisionEngineWithRepositories(aiProvider aiDomain.AIProvider, executionPlanRepo domain.ExecutionPlanRepository, decisionRepo domain.DecisionRepository) *AIDecisionEngine {
+	return &AIDecisionEngine{
+		aiProvider:        aiProvider,
+		responseParser:    domain.NewResponseParser(),
+		executionPlanRepo: executionPlanRepo,
+		decisionRepo:      decisionRepo,
 	}
 }
 
@@ -80,7 +90,7 @@ Analyze this request based on available agents.`, userID, userInput)
 
 // MakeDecision determines whether to clarify or execute based on analysis
 // Returns planning decisions only - orchestrator handles execution coordination
-func (e *AIDecisionEngine) MakeDecision(ctx context.Context, userInput, userID string, analysis *domain.Analysis, requestID string) (*orchestratorDomain.Decision, error) {
+func (e *AIDecisionEngine) MakeDecision(ctx context.Context, userInput, userID string, analysis *domain.Analysis, requestID string) (*domain.Decision, error) {
 	systemPrompt := `You are an AI orchestrator that decides whether to ask for clarification or execute a request.
 
 Based on the provided analysis, you must:
@@ -150,7 +160,16 @@ Based on this analysis, decide whether to clarify or execute.`, userID, userInpu
 	if strings.Contains(response, "DECISION: CLARIFY") {
 		clarificationQuestion := e.responseParser.ExtractSection(response, "CLARIFICATION:")
 		reasoning := e.responseParser.ExtractSection(response, "REASONING:")
-		return orchestratorDomain.NewClarifyDecision(requestID, analysis.ID, clarificationQuestion, reasoning), nil
+		decision := domain.NewClarifyDecision(requestID, analysis.ID, clarificationQuestion, reasoning)
+		
+		// Persist decision if repository is available
+		if e.decisionRepo != nil {
+			if err := e.decisionRepo.Store(ctx, decision); err != nil {
+				return nil, fmt.Errorf("failed to store decision: %w", err)
+			}
+		}
+		
+		return decision, nil
 	}
 
 	// For execution decisions, create and persist structured ExecutionPlan
@@ -193,7 +212,28 @@ Based on this analysis, decide whether to clarify or execute.`, userID, userInpu
 
 	// Return a planning recommendation that execution should happen
 	// Note: This creates a unified decision for now, but orchestrator coordinates domains
-	return orchestratorDomain.NewExecuteDecision(requestID, analysis.ID, executionPlanID, agentCoordination, reasoning), nil
+	decision := domain.NewExecuteDecision(requestID, analysis.ID, executionPlanID, agentCoordination, reasoning)
+	
+	// Persist decision if repository is available
+	if e.decisionRepo != nil {
+		if err := e.decisionRepo.Store(ctx, decision); err != nil {
+			return nil, fmt.Errorf("failed to store decision: %w", err)
+		}
+		
+		// Link decision to analysis
+		if err := e.decisionRepo.LinkToAnalysis(ctx, decision.ID, analysis.ID); err != nil {
+			return nil, fmt.Errorf("failed to link decision to analysis: %w", err)
+		}
+		
+		// Link decision to execution plan if available
+		if executionPlanID != "" {
+			if err := e.decisionRepo.LinkToExecutionPlan(ctx, decision.ID, executionPlanID); err != nil {
+				return nil, fmt.Errorf("failed to link decision to execution plan: %w", err)
+			}
+		}
+	}
+	
+	return decision, nil
 }
 
 // parseExecutionPlanJSON parses JSON execution plan into structured steps

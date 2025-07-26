@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	orchestratorApp "neuromesh/internal/orchestrator/application"
-	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	planningDomain "neuromesh/internal/planning/domain"
 )
 
@@ -44,8 +43,8 @@ func (m *MockOrchestrator) ProcessRequest(ctx context.Context, userInput string,
 			Intent:     "general",
 			Confidence: 70,
 		},
-		Decision: &orchestratorDomain.Decision{
-			Type:      orchestratorDomain.DecisionTypeClarify,
+		Decision: &planningDomain.Decision{
+			Type:      planningDomain.DecisionTypeClarify,
 			Reasoning: "General response",
 		},
 	}, nil

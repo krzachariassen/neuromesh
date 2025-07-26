@@ -19,10 +19,10 @@ type AgentCompletedEvent struct {
 
 // SynthesisEventHandler handles agent completion events and triggers synthesis
 type SynthesisEventHandler struct {
-	coordinator   *ExecutionCoordinator
-	messageBus    messaging.AIMessageBus
-	repository    planningDomain.ExecutionPlanRepository
-	synthesizer   domain.ResultSynthesizer
+	coordinator *ExecutionCoordinator
+	messageBus  messaging.AIMessageBus
+	repository  planningDomain.ExecutionPlanRepository
+	synthesizer domain.ResultSynthesizer
 }
 
 // NewSynthesisEventHandler creates a new synthesis event handler

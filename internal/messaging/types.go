@@ -20,17 +20,17 @@ type Message struct {
 type MessageType string
 
 const (
-	MessageTypeRequest       MessageType = "request"
-	MessageTypeResponse      MessageType = "response"
-	MessageTypeClarification MessageType = "clarification"
-	MessageTypeNotification  MessageType = "notification"
-	MessageTypeAgentToAgent  MessageType = "agent_to_agent"
-	MessageTypeAIToAgent     MessageType = "ai_to_agent"
-	MessageTypeAgentToAI     MessageType = "agent_to_ai"
-	MessageTypeCompletion    MessageType = "completion"
+	MessageTypeRequest        MessageType = "request"
+	MessageTypeResponse       MessageType = "response"
+	MessageTypeClarification  MessageType = "clarification"
+	MessageTypeNotification   MessageType = "notification"
+	MessageTypeAgentToAgent   MessageType = "agent_to_agent"
+	MessageTypeAIToAgent      MessageType = "ai_to_agent"
+	MessageTypeAgentToAI      MessageType = "agent_to_ai"
+	MessageTypeCompletion     MessageType = "completion"
 	MessageTypeAgentCompleted MessageType = "agent.completed"
-	MessageTypeError         MessageType = "error"
-	MessageTypeInstruction   MessageType = "instruction"
+	MessageTypeError          MessageType = "error"
+	MessageTypeInstruction    MessageType = "instruction"
 )
 
 // ConversationContext represents the context of a conversation

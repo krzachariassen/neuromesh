@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	"neuromesh/internal/planning/domain"
 	"neuromesh/testHelpers"
 
@@ -55,10 +54,10 @@ func TestAIDecisionEngine_MakeDecision(t *testing.T) {
 		assert.NotNil(t, decision)
 
 		// Validate that we get either CLARIFY or EXECUTE decision
-		assert.True(t, decision.Type == orchestratorDomain.DecisionTypeClarify ||
-			decision.Type == orchestratorDomain.DecisionTypeExecute)
+		assert.True(t, decision.Type == domain.DecisionTypeClarify ||
+			decision.Type == domain.DecisionTypeExecute)
 
-		if decision.Type == orchestratorDomain.DecisionTypeClarify {
+		if decision.Type == domain.DecisionTypeClarify {
 			assert.NotEmpty(t, decision.ClarificationQuestion)
 			t.Logf("AI Decision: CLARIFY - %s", decision.ClarificationQuestion)
 		} else {
@@ -118,7 +117,7 @@ func TestAIDecisionEngine_MakeDecision_WithExecutionPlanPersistence(t *testing.T
 		assert.NotNil(t, decision)
 		assert.NotEmpty(t, decision.Reasoning)
 
-		if decision.Type == orchestratorDomain.DecisionTypeExecute {
+		if decision.Type == domain.DecisionTypeExecute {
 			// GREEN: These assertions should now pass with structured ExecutionPlan persistence
 			t.Logf("AI Decision: EXECUTE - ExecutionPlanID: '%s'", decision.ExecutionPlanID)
 			t.Logf("ExecutionPlanID length: %d", len(decision.ExecutionPlanID))

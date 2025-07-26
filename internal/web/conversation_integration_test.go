@@ -13,7 +13,6 @@ import (
 	"neuromesh/internal/graph"
 	"neuromesh/internal/logging"
 	orchestratorApp "neuromesh/internal/orchestrator/application"
-	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	planningDomain "neuromesh/internal/planning/domain"
 	userApp "neuromesh/internal/user/application"
 	userDomain "neuromesh/internal/user/domain"
@@ -56,8 +55,8 @@ func TestConversationAwareWebBFFWithGraph(t *testing.T) {
 					Confidence: 95,
 					Category:   "social",
 				},
-				Decision: &orchestratorDomain.Decision{
-					Type:      orchestratorDomain.DecisionTypeClarify,
+				Decision: &planningDomain.Decision{
+					Type:      planningDomain.DecisionTypeClarify,
 					Reasoning: "Simple greeting from user",
 				},
 			},
@@ -69,8 +68,8 @@ func TestConversationAwareWebBFFWithGraph(t *testing.T) {
 					Confidence: 85,
 					Category:   "information",
 				},
-				Decision: &orchestratorDomain.Decision{
-					Type:      orchestratorDomain.DecisionTypeClarify,
+				Decision: &planningDomain.Decision{
+					Type:      planningDomain.DecisionTypeClarify,
 					Reasoning: "User asking about capabilities",
 				},
 			},
@@ -206,8 +205,8 @@ func (m *MockOrchestratorImpl) ProcessRequest(ctx context.Context, userInput str
 			Confidence: 70,
 			Category:   "general",
 		},
-		Decision: &orchestratorDomain.Decision{
-			Type:      orchestratorDomain.DecisionTypeClarify,
+		Decision: &planningDomain.Decision{
+			Type:      planningDomain.DecisionTypeClarify,
 			Reasoning: "General response",
 		},
 	}, nil

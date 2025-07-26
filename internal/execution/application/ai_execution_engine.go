@@ -320,6 +320,15 @@ func (e *AIExecutionEngine) storeAgentResult(ctx context.Context, agentResponse 
 		return fmt.Errorf("failed to store agent result: %w", err)
 	}
 
+	// Mark the execution step as completed when agent finishes successfully
+	if status == executionDomain.AgentResultStatusSuccess {
+		err = e.markStepAsCompleted(ctx, stepID)
+		if err != nil {
+			// Log error but don't fail - step completion is important but not critical
+			fmt.Printf("Warning: Failed to mark step %s as completed: %v\n", stepID, err)
+		}
+	}
+
 	// Publish agent completion event for synthesis coordination
 	// Extract planID from context or stepID pattern
 	planID := e.extractPlanIDFromContext(agentResponse.Context, stepID)
@@ -332,6 +341,80 @@ func (e *AIExecutionEngine) storeAgentResult(ctx context.Context, agentResponse 
 				fmt.Printf("Warning: Failed to publish agent completion event: %v\n", err)
 			}
 		}()
+	}
+
+	return nil
+}
+
+// markStepAsCompleted marks an execution step as completed
+func (e *AIExecutionEngine) markStepAsCompleted(ctx context.Context, stepID string) error {
+	// For now, we need to find the step by searching through plans
+	// TODO: In the future, add a GetStepByID method to the repository interface
+
+	// Try to extract planID to get steps more efficiently
+	planID := e.extractPlanIDFromStepID(stepID)
+	if planID == "" {
+		// If we can't extract planID, we can't efficiently find the step
+		return fmt.Errorf("unable to extract plan ID from step ID %s", stepID)
+	}
+
+	// Get steps for the plan
+	steps, err := e.repository.GetStepsByPlanID(ctx, planID)
+	if err != nil {
+		return fmt.Errorf("failed to get steps for plan %s: %w", planID, err)
+	}
+
+	// Find the specific step
+	var targetStep *planningDomain.ExecutionStep
+	for _, step := range steps {
+		if step.ID == stepID {
+			targetStep = step
+			break
+		}
+	}
+
+	if targetStep == nil {
+		return fmt.Errorf("step %s not found in plan %s", stepID, planID)
+	}
+
+	// Handle step status progression based on current status
+	switch targetStep.Status {
+	case planningDomain.ExecutionStepStatusPending:
+		// Step hasn't been started yet, mark as assigned first
+		targetStep.Assign()
+		// Start the step
+		if err := targetStep.Start(); err != nil {
+			return fmt.Errorf("failed to start step %s: %w", stepID, err)
+		}
+		// Complete the step with agent result content
+		if err := targetStep.Complete("Agent execution completed"); err != nil {
+			return fmt.Errorf("failed to complete step %s: %w", stepID, err)
+		}
+	case planningDomain.ExecutionStepStatusAssigned:
+		// Step is assigned but not started, start it first
+		if err := targetStep.Start(); err != nil {
+			return fmt.Errorf("failed to start step %s: %w", stepID, err)
+		}
+		// Complete the step
+		if err := targetStep.Complete("Agent execution completed"); err != nil {
+			return fmt.Errorf("failed to complete step %s: %w", stepID, err)
+		}
+	case planningDomain.ExecutionStepStatusExecuting:
+		// Step is already executing, just complete it
+		if err := targetStep.Complete("Agent execution completed"); err != nil {
+			return fmt.Errorf("failed to complete step %s: %w", stepID, err)
+		}
+	case planningDomain.ExecutionStepStatusCompleted:
+		// Step is already completed, nothing to do
+		return nil
+	default:
+		return fmt.Errorf("cannot complete step %s with status %s", stepID, targetStep.Status)
+	}
+
+	// Update in repository
+	err = e.repository.UpdateStep(ctx, targetStep)
+	if err != nil {
+		return fmt.Errorf("failed to update step %s status: %w", stepID, err)
 	}
 
 	return nil

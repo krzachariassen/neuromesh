@@ -7,14 +7,13 @@ import (
 
 	executionDomain "neuromesh/internal/execution/domain"
 	"neuromesh/internal/logging"
-	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	planningDomain "neuromesh/internal/planning/domain"
 )
 
 // AIDecisionEngineInterface defines the interface for AI decision making
 type AIDecisionEngineInterface interface {
 	ExploreAndAnalyze(ctx context.Context, userInput, userID, agentContext, requestID string) (*planningDomain.Analysis, error)
-	MakeDecision(ctx context.Context, userInput, userID string, analysis *planningDomain.Analysis, requestID string) (*orchestratorDomain.Decision, error)
+	MakeDecision(ctx context.Context, userInput, userID string, analysis *planningDomain.Analysis, requestID string) (*planningDomain.Decision, error)
 }
 
 // GraphExplorerInterface defines the interface for graph exploration
@@ -34,8 +33,8 @@ type AIConversationEngineInterface interface {
 
 // LearningServiceInterface defines the interface for learning service
 type LearningServiceInterface interface {
-	StoreInsights(ctx context.Context, userRequest string, analysis *planningDomain.Analysis, decision *orchestratorDomain.Decision) error
-	AnalyzePatterns(ctx context.Context, sessionID string) (*orchestratorDomain.ConversationPattern, error)
+	StoreInsights(ctx context.Context, userRequest string, analysis *planningDomain.Analysis, decision *planningDomain.Decision) error
+	AnalyzePatterns(ctx context.Context, sessionID string) error // Simplified for now, remove ConversationPattern reference
 }
 
 // OrchestratorService represents the clean AI orchestrator service implementation
@@ -79,7 +78,7 @@ type OrchestratorRequest struct {
 // OrchestratorResult represents the orchestrator's response
 type OrchestratorResult struct {
 	Message         string                       `json:"message"`
-	Decision        *orchestratorDomain.Decision `json:"decision"`
+	Decision        *planningDomain.Decision     `json:"decision"`
 	Analysis        *planningDomain.Analysis     `json:"analysis"`
 	ExecutionPlanID string                       `json:"execution_plan_id,omitempty"`
 	Success         bool                         `json:"success"`
@@ -122,10 +121,10 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 	}
 
 	// 3. Handle decision based on type
-	if decision.Type == orchestratorDomain.DecisionTypeClarify {
+	if decision.Type == planningDomain.DecisionTypeClarify {
 		ors.logger.Info("🤔 Decision type: Clarify")
 		result.Message = decision.ClarificationQuestion
-	} else if decision.Type == orchestratorDomain.DecisionTypeExecute {
+	} else if decision.Type == planningDomain.DecisionTypeExecute {
 		ors.logger.Info("🚀 Decision type: Execute", "requiredAgents", len(analysis.RequiredAgents))
 
 		// Check if this is a meta-query that should be handled with AI orchestrator knowledge

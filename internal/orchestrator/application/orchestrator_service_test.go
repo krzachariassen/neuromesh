@@ -7,7 +7,6 @@ import (
 
 	aiInfrastructure "neuromesh/internal/ai/infrastructure"
 	"neuromesh/internal/logging"
-	orchestratorDomain "neuromesh/internal/orchestrator/domain"
 	planningApplication "neuromesh/internal/planning/application"
 	planningDomain "neuromesh/internal/planning/domain"
 	"neuromesh/testHelpers"
@@ -47,12 +46,12 @@ func (m *MockAIDecisionEngine) ExploreAndAnalyze(ctx context.Context, userInput,
 	return args.Get(0).(*planningDomain.Analysis), args.Error(1)
 }
 
-func (m *MockAIDecisionEngine) MakeDecision(ctx context.Context, userInput, userID string, analysis *planningDomain.Analysis, requestID string) (*orchestratorDomain.Decision, error) {
+func (m *MockAIDecisionEngine) MakeDecision(ctx context.Context, userInput, userID string, analysis *planningDomain.Analysis, requestID string) (*planningDomain.Decision, error) {
 	args := m.Called(ctx, userInput, userID, analysis, requestID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*orchestratorDomain.Decision), args.Error(1)
+	return args.Get(0).(*planningDomain.Decision), args.Error(1)
 }
 
 // setupRealAIProvider creates a real OpenAI provider for testing
@@ -166,7 +165,7 @@ func TestOrchestratorService_ProcessUserRequest(t *testing.T) {
 		mockExplorer.AssertExpectations(t)
 
 		// If AI made an execute decision with agents, execution engine should be called
-		if result.Decision.Type == orchestratorDomain.DecisionTypeExecute && len(result.Analysis.RequiredAgents) > 0 {
+		if result.Decision.Type == planningDomain.DecisionTypeExecute && len(result.Analysis.RequiredAgents) > 0 {
 			mockExecutionEngine.AssertExpectations(t)
 		}
 	})
