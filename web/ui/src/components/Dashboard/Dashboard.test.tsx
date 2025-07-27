@@ -51,7 +51,7 @@ describe('Dashboard', () => {
       expect(screen.getByText('2')).toBeInTheDocument(); // Active agents count
     });
 
-    expect(mockFetch).toHaveBeenCalledWith('http://localhost:8081/api/agents/status');
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost:8080/api/agents/status');
   });
 
   it('should handle API errors gracefully', async () => {
@@ -76,7 +76,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8081/health');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8080/health');
     });
   });
 });

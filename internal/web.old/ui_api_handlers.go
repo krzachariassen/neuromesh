@@ -188,12 +188,15 @@ func (w *ConversationAwareWebBFF) CreateWebServer(addr string) *http.Server {
 	mux.Handle("/api/chat", w.ChatHandler())
 	mux.Handle("/ws", w.WebSocketHandler())
 
-	// New UI API routes for React frontend
+	// Existing API routes (keep for backward compatibility during refactor)
 	mux.Handle("/api/graph/conversation/", w.GraphDataHandler())
 	mux.Handle("/api/execution-plan/", w.ExecutionPlanHandler())
-	mux.Handle("/api/conversations/", w.ConversationHistoryHandler())
+	mux.Handle("/api/conversations/", w.ConversationHistoryHandler()) // This handles /api/conversations/{sessionID}
 	mux.Handle("/api/agents/status", w.AgentStatusHandler())
 	mux.Handle("/ws/enhanced", w.EnhancedWebSocketHandler())
+
+	// New clean API endpoints
+	mux.Handle("/api/conversation/", w.ConversationDetailHandler())
 
 	// Health check
 	mux.HandleFunc("/health", func(rw http.ResponseWriter, r *http.Request) {

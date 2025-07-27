@@ -34,19 +34,19 @@ type ChatResponse struct {
 func main() {
 	// 🎯 REFACTORED: Chat UI as standalone service that calls WebBFF API
 	chatServer := &ChatServer{
-		webBFFURL: "http://localhost:8081", // WebBFF API URL
+		webBFFURL: "http://localhost:8080", // WebBFF API URL
 	}
 
 	// Setup routes
 	http.HandleFunc("/", chatServer.handleHome)
 	http.HandleFunc("/conversation", chatServer.handleConversation)
 
-	fmt.Println("🚀 AI Orchestrator Chat UI starting on http://localhost:8080")
-	fmt.Println("🌐 Connecting to WebBFF API at http://localhost:8081")
+	fmt.Println("🚀 AI Orchestrator Chat UI starting on http://localhost:8082")
+	fmt.Println("🌐 Connecting to WebBFF API at http://localhost:8080")
 	fmt.Println("💬 Open your browser to start chatting with the AI orchestrator!")
 	fmt.Println("🔥 Now with REAL AI responses via WebBFF!")
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8082", nil))
 }
 
 // handleHome serves the chat HTML page

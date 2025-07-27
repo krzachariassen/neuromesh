@@ -69,6 +69,16 @@ type ConversationData struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// ConversationSummary represents a conversation summary for listing
+type ConversationSummary struct {
+	ID        string `json:"id"`
+	SessionID string `json:"session_id"`
+	UserID    string `json:"user_id"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 // MessageData represents a message for UI
 type MessageData struct {
 	ID             string                 `json:"id"`

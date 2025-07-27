@@ -15,13 +15,14 @@ import (
 
 	"neuromesh/internal/agent/registry"
 	aiInfrastructure "neuromesh/internal/ai/infrastructure"
+	"neuromesh/internal/api/bff"
 	pb "neuromesh/internal/api/grpc/api"
+	apiServer "neuromesh/internal/api/server"
 	"neuromesh/internal/graph"
-	"neuromesh/internal/grpc/server"
+	grpcServer "neuromesh/internal/grpc/server"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
 	"neuromesh/internal/orchestrator/application"
-	"neuromesh/internal/web"
 )
 
 // getEnvOrDefault gets an environment variable or returns a default value
@@ -125,57 +126,49 @@ func main() {
 	// Create registry service for agent management
 	registryService := registry.NewService(productionGraph, logger)
 
-	// Create adapter for web interface compatibility
-	orchestratorAdapter := web.NewOrchestratorAdapter(orchestratorService)
+	// Create adapter for orchestrator service to work with BFF
+	orchestratorAdapter := bff.NewOrchestratorAdapter(orchestratorService)
 
-	// Create ConversationAwareWebBFF for web UI integration with conversation persistence
-	conversationAwareWebBFF := web.NewConversationAwareWebBFF(orchestratorAdapter, conversationService, userService, productionGraph, logger)
+	// Create unified API server with clean architecture
+	unifiedServer := apiServer.NewServer(
+		":8080",
+		orchestratorAdapter,
+		conversationService,
+		userService,
+		productionGraph,
+		logger,
+	)
 
-	// Initialize conversation and user schemas
-	err = conversationAwareWebBFF.InitializeSchema(ctx)
-	if err != nil {
-		log.Fatalf("Failed to initialize conversation schemas: %v", err)
-	}
-
-	// Create WebBFF server with conversation awareness
-	webServer := conversationAwareWebBFF.CreateWebServer(":8081")
-
-	logger.Info("🌐 WebBFF server initialized for web UI integration")
+	logger.Info("🌐 Unified API server initialized with clean architecture")
 
 	// Create gRPC server (thin proxy layer)
-	grpcServer := server.NewOrchestrationServer(aiMessageBus, registryService, logger)
+	grpcSrv := grpcServer.NewOrchestrationServer(aiMessageBus, registryService, logger)
 
 	// Set up gRPC server
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		log.Fatalf("Failed to listen for gRPC: %v", err)
 	}
 
 	s := grpc.NewServer()
-
-	// Register the orchestration service
-	// Since our protobuf is minimal, we use a custom registration
-	pb.RegisterOrchestrationServiceServer(s, grpcServer)
-
-	logger.Info("OrchestrationService registered with gRPC server")
-
-	// Enable reflection for development
+	pb.RegisterOrchestrationServiceServer(s, grpcSrv)
 	reflection.Register(s)
 
-	logger.Info("Starting gRPC server", "port", 50051)
+	logger.Info("🚀 gRPC server initialized", "port", ":50051")
 
-	// Start server in goroutine
+	// Start gRPC server in background
 	go func() {
+		logger.Info("🎧 gRPC server starting")
 		if err := s.Serve(lis); err != nil {
-			logger.Error("Failed to serve gRPC", err)
+			logger.Error("gRPC server failed", err)
 		}
 	}()
 
-	// Start WebBFF HTTP server
+	// Start unified API server in background
 	go func() {
-		logger.Info("Starting WebBFF HTTP server", "port", 8081)
-		if err := webServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("Failed to serve WebBFF HTTP", err)
+		logger.Info("🌐 Starting unified API server")
+		if err := unifiedServer.Start(ctx); err != nil && err != http.ErrServerClosed {
+			logger.Error("Unified API server failed", err)
 		}
 	}()
 
@@ -223,20 +216,20 @@ func main() {
 		s.Stop()
 	}
 
-	// Shutdown WebBFF HTTP server
+	// Shutdown unified API server
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	go func() {
-		if err := webServer.Shutdown(ctx); err != nil {
-			logger.Error("WebBFF HTTP server Shutdown:", err)
+		if err := unifiedServer.Stop(ctx); err != nil {
+			logger.Error("Unified API server Stop:", err)
 		}
 	}()
 
 	select {
 	case <-done:
-		logger.Info("WebBFF HTTP Server gracefully stopped")
+		logger.Info("Unified API Server gracefully stopped")
 	case <-ctx.Done():
-		logger.Info("WebBFF HTTP Server shutdown timed out, forcing stop")
+		logger.Info("Unified API Server shutdown timed out, forcing stop")
 	}
 }

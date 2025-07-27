@@ -1,6 +1,11 @@
 import React from 'react';
+import { GraphVisualization } from './GraphVisualization';
 
 const GraphView: React.FC = () => {
+  // For now, we'll use a default conversation ID
+  // TODO: This should come from URL params or user selection
+  const conversationId = "test-conversation-1";
+
   return (
     <div data-testid="graph-view" className="space-y-6">
       <div className="flex justify-between items-center">
@@ -15,19 +20,9 @@ const GraphView: React.FC = () => {
         </div>
       </div>
 
-      {/* Graph Container */}
-      <div className="card h-96">
-        <div className="h-full flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-          <div className="text-center">
-            <div className="text-gray-400 mb-2">
-              <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V7.618a1 1 0 01.553-.894L9 4l6 3 6-3 .553.894A1 1 0 0122 7.618v8.764a1 1 0 01-.553.894L15 20l-6-3z" />
-              </svg>
-            </div>
-            <p className="text-sm text-gray-500">Graph visualization will be rendered here</p>
-            <p className="text-xs text-gray-400 mt-1">Connect to view conversation flows and agent interactions</p>
-          </div>
-        </div>
+      {/* Graph Container - Now using our React Flow component */}
+      <div className="card" style={{ height: '600px' }}>
+        <GraphVisualization conversationId={conversationId} />
       </div>
 
       {/* Graph Controls */}

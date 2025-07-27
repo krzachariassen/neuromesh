@@ -206,8 +206,8 @@ func setupTestConversationBFF(t *testing.T) (*ConversationAwareWebBFF, func()) {
 	conversationService := testHelpers.NewMockConversationService()
 	userService := testHelpers.NewMockUserService()
 
-	// Add graph dependency for real data integration
-	testGraph := testHelpers.NewCleanMockGraph() // Use clean graph for controlled testing
+	// Add graph dependency with test data for UI API testing
+	testGraph := testHelpers.NewMockGraph() // Use populated graph for UI API tests
 
 	// Create conversation-aware WebBFF
 	bff := NewConversationAwareWebBFF(

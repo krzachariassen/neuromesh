@@ -9,7 +9,7 @@ export default defineConfig({
     proxy: {
       // Proxy API calls to our Go backend
       '/api': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
         configure: (proxy, _options) => {
@@ -26,12 +26,12 @@ export default defineConfig({
       },
       // Proxy health endpoint
       '/health': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
       },
       '/ws': {
-        target: 'ws://localhost:8081',
+        target: 'ws://localhost:8080',
         ws: true,
         changeOrigin: true,
       }

@@ -73,7 +73,7 @@ func (m *MockGraph) addTestData() {
 		"status":      "active",
 	}
 
-	// Add test conversations
+	// Add test conversations - including specific test case data
 	m.nodes["conversation:user123_001"] = map[string]interface{}{
 		"id":        "user123_001",
 		"type":      "conversation",
@@ -82,6 +82,41 @@ func (m *MockGraph) addTestData() {
 		"request":   "Deploy my application to production",
 		"response":  "Deployment completed successfully",
 		"status":    "completed",
+	}
+
+	// Add specific test data for UI API discovery tests
+	m.nodes["Conversation:conv-123"] = map[string]interface{}{
+		"id":         "conv-123",
+		"type":       "conversation",
+		"user_id":    "test-user-123",
+		"status":     "active",
+		"created_at": "2025-07-26T10:00:00Z",
+	}
+
+	m.nodes["User:test-user-123"] = map[string]interface{}{
+		"id":   "test-user-123",
+		"type": "user",
+		"name": "Test User",
+	}
+
+	m.nodes["ExecutionPlan:plan-456"] = map[string]interface{}{
+		"id":              "plan-456",
+		"type":            "execution_plan",
+		"conversation_id": "conv-123",
+		"name":            "Test Execution Plan",
+		"description":     "Test plan for UI API",
+		"status":          "PENDING",
+		"created_at":      "2025-07-26T10:05:00Z",
+	}
+
+	m.nodes["ExecutionStep:step-789"] = map[string]interface{}{
+		"id":          "step-789",
+		"type":        "execution_step",
+		"plan_id":     "plan-456",
+		"name":        "Test Step",
+		"description": "Test execution step",
+		"agent_name":  "test-agent",
+		"status":      "pending",
 	}
 }
 

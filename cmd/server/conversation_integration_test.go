@@ -23,7 +23,7 @@ func TestConversationPersistenceIntegration(t *testing.T) {
 	// 3. Message history is maintained across requests
 
 	sessionID := "test-session-" + fmt.Sprintf("%d", time.Now().Unix())
-	serverURL := "http://localhost:8081"
+	serverURL := "http://localhost:8080"
 
 	t.Run("should persist conversation messages", func(t *testing.T) {
 		// Send first message

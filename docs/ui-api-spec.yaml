@@ -10,7 +10,7 @@ info:
     url: https://github.com/krzachariassen/neuromesh
 
 servers:
-  - url: http://localhost:8081
+  - url: http://localhost:8080
     description: Local development server
 
 paths:

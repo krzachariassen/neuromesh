@@ -307,6 +307,26 @@ func (r *GraphConversationRepository) FindActiveConversations(ctx context.Contex
 	return r.FindConversationsByStatus(ctx, domain.ConversationStatusActive)
 }
 
+// GetAllConversations retrieves all conversations in the system
+func (r *GraphConversationRepository) GetAllConversations(ctx context.Context) ([]*domain.Conversation, error) {
+	// Query all conversations without any filters
+	conversationProps, err := r.graph.QueryNodes(ctx, NodeTypeConversation, map[string]interface{}{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all conversations: %w", err)
+	}
+
+	conversations := make([]*domain.Conversation, len(conversationProps))
+	for i, props := range conversationProps {
+		conversation, err := r.mapToConversation(props)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map conversation properties: %w", err)
+		}
+		conversations[i] = conversation
+	}
+
+	return conversations, nil
+}
+
 // FindConversationsByStatus finds conversations by status
 func (r *GraphConversationRepository) FindConversationsByStatus(ctx context.Context, status domain.ConversationStatus) ([]*domain.Conversation, error) {
 	filters := map[string]interface{}{

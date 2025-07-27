@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	apiDomain "neuromesh/internal/api/rest/v1/domain"
 	conversationApp "neuromesh/internal/conversation/application"
 	conversationDomain "neuromesh/internal/conversation/domain"
 	userApp "neuromesh/internal/user/application"
@@ -78,6 +79,11 @@ func (m *MockConversationService) FindConversationsBySession(ctx context.Context
 }
 
 func (m *MockConversationService) FindActiveConversations(ctx context.Context) ([]*conversationDomain.Conversation, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]*conversationDomain.Conversation), args.Error(1)
+}
+
+func (m *MockConversationService) GetAllConversations(ctx context.Context) ([]*conversationDomain.Conversation, error) {
 	args := m.Called(ctx)
 	return args.Get(0).([]*conversationDomain.Conversation), args.Error(1)
 }
@@ -190,3 +196,18 @@ func (m *MockUserService) EnsureSchema(ctx context.Context) error {
 // Ensure mocks implement the interfaces
 var _ conversationApp.ConversationService = (*MockConversationService)(nil)
 var _ userApp.UserService = (*MockUserService)(nil)
+
+// MockGraphService provides a testify-based mock for graph service operations
+type MockGraphService struct {
+	mock.Mock
+}
+
+// NewMockGraphService creates a new mock graph service instance
+func NewMockGraphService() *MockGraphService {
+	return &MockGraphService{}
+}
+
+func (m *MockGraphService) GetConversationGraph(ctx context.Context, conversationID string) (*apiDomain.GraphData, error) {
+	args := m.Called(ctx, conversationID)
+	return args.Get(0).(*apiDomain.GraphData), args.Error(1)
+}

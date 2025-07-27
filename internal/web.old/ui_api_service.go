@@ -57,6 +57,15 @@ func (s *UIAPIService) GetGraphData(ctx context.Context, conversationID string) 
 		return nil, fmt.Errorf("failed to get conversation node: %w", err)
 	}
 
+	// If conversation not found, return empty graph data (valid for new conversations)
+	if conversationNode == nil {
+		return &GraphDataResponse{
+			ConversationID: conversationID,
+			Nodes:          []GraphNode{},
+			Edges:          []GraphEdge{},
+		}, nil
+	}
+
 	// REFACTOR: Extract graph data assembly into helper methods
 	graphData := &GraphDataResponse{
 		ConversationID: conversationID,

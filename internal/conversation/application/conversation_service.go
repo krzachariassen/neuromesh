@@ -32,6 +32,7 @@ type ConversationService interface {
 	FindConversationsByUser(ctx context.Context, userID string) ([]*domain.Conversation, error)
 	FindConversationsBySession(ctx context.Context, sessionID string) ([]*domain.Conversation, error)
 	FindActiveConversations(ctx context.Context) ([]*domain.Conversation, error)
+	GetAllConversations(ctx context.Context) ([]*domain.Conversation, error)
 
 	// Schema management
 	EnsureSchema(ctx context.Context) error
@@ -237,6 +238,15 @@ func (s *ConversationServiceImpl) FindActiveConversations(ctx context.Context) (
 	conversations, err := s.repo.FindActiveConversations(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find active conversations: %w", err)
+	}
+	return conversations, nil
+}
+
+// GetAllConversations retrieves all conversations in the system
+func (s *ConversationServiceImpl) GetAllConversations(ctx context.Context) ([]*domain.Conversation, error) {
+	conversations, err := s.repo.GetAllConversations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all conversations: %w", err)
 	}
 	return conversations, nil
 }

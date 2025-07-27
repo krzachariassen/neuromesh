@@ -30,4 +30,5 @@ type ConversationRepository interface {
 	FindConversationsBySession(ctx context.Context, sessionID string) ([]*Conversation, error)
 	FindActiveConversations(ctx context.Context) ([]*Conversation, error)
 	FindConversationsByStatus(ctx context.Context, status ConversationStatus) ([]*Conversation, error)
+	GetAllConversations(ctx context.Context) ([]*Conversation, error)
 }
