@@ -1,0 +1,154 @@
+package application
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	executionDomain "neuromesh/internal/execution/domain"
+	"neuromesh/testHelpers"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestMultiAgentHealthcareScenario demonstrates the COMPLETE multi-agent workflow
+// This is what should happen for complex scenarios requiring multiple agents
+func TestMultiAgentHealthcareScenario(t *testing.T) {
+	t.Run("should orchestrate multiple agents and synthesize final result", func(t *testing.T) {
+		// Arrange: Set up REAL AI with actual execution workflow
+		ctx := context.Background()
+		aiProvider := testHelpers.SetupRealAIProvider(t)
+		
+		// Create real repositories for execution tracking
+		executionPlanRepo := testHelpers.NewMockExecutionPlanRepository()
+		
+		// Create orchestrator with existing constructor for now
+		orchestrator, err := NewOrchestratorService(
+			aiProvider,
+			executionPlanRepo,
+		)
+		require.NoError(t, err)
+
+		// REAL healthcare document requiring multiple agent analysis
+		healthcareDoc := `Patient: Sarah Johnson, 45F
+Chief Complaint: Recurring severe headaches, vision changes
+History: 3-month history of progressive headaches, worse in mornings, associated with nausea and blurred vision
+Vitals: BP 140/90, HR 85, RR 16, Temp 98.6°F
+Neuro: Alert, oriented x3, papilledema on fundoscopy, mild right-sided weakness
+Imaging: MRI brain shows 2.5cm enhancing mass in left frontal lobe
+Labs: CBC normal, comprehensive metabolic panel normal
+Assessment: Brain mass, rule out glioblastoma vs metastatic disease
+Plan: Neurosurgery consult, biopsy, oncology evaluation, corticosteroids`
+
+		userInput := "Analyze this brain tumor case and provide comprehensive assessment including risk factors, treatment options, and prognosis"
+		userID := "oncologist-123"
+		conversationID := "brain-tumor-case-456"
+
+		// Agent context with REAL agents for medical document analysis
+		agentContext := `Available Agents:
+- medical-text-processor | Status: available | Capabilities: medical terminology extraction, vital signs parsing, medication analysis
+- clinical-data-analyzer | Status: available | Capabilities: lab result interpretation, imaging report analysis, differential diagnosis support
+- treatment-planner | Status: available | Capabilities: treatment protocol analysis, drug interaction checking, care pathway recommendations
+- risk-assessor | Status: available | Capabilities: risk factor analysis, prognosis calculation, outcome prediction`
+
+		t.Logf("\n🏥 MULTI-AGENT HEALTHCARE ANALYSIS TEST")
+		t.Logf("📋 Document: Brain tumor case requiring comprehensive analysis")
+
+		// Act: Process with full multi-agent orchestration
+		request := &OrchestratorRequest{
+			UserInput:      userInput + ": " + healthcareDoc,
+			UserID:         userID,
+			ConversationID: conversationID,
+		}
+
+		result, err := orchestrator.ProcessUserRequest(ctx, request)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		t.Logf("\n🔍 Initial Planning Result:")
+		t.Logf("  Success: %v", result.Success)
+		t.Logf("  Message Length: %d characters", len(result.Message))
+
+		// The result should indicate that execution is in progress (not final answer)
+		assert.True(t, result.Success)
+		
+		// For EXECUTE type, we should have an execution plan ID
+		if result.ExecutionPlanID != "" {
+			t.Logf("  Execution Plan ID: %s", result.ExecutionPlanID)
+
+			// Simulate agents completing their work over time
+			// This is what would happen in a real multi-agent scenario
+			t.Logf("\n🤖 SIMULATING MULTI-AGENT EXECUTION:")
+
+			// Agent 1: Medical text processor completes
+			medicalResult := &executionDomain.AgentResult{
+				AgentID:   "medical-text-processor",
+				Status:    executionDomain.AgentResultStatusSuccess,
+				Content:   "MEDICAL ANALYSIS:\n• Diagnosed condition: Brain mass (2.5cm left frontal)\n• Critical vitals: Hypertensive (140/90), papilledema present\n• Key symptoms: Progressive headaches, vision changes, neurological deficits\n• Extracted medications: Corticosteroids prescribed\n• Urgency level: High - immediate intervention required",
+				Timestamp: time.Now(),
+				Metadata: map[string]interface{}{
+					"extracted_terms": []string{"glioblastoma", "metastatic disease", "papilledema", "frontal lobe"},
+					"vital_signs_abnormal": true,
+					"urgency_score": 9,
+				},
+			}
+			
+			// Store agent result (this would happen through messaging in real system)
+			err = executionPlanRepo.StoreAgentResult(ctx, medicalResult)
+			require.NoError(t, err)
+			t.Logf("  ✅ Medical text processor completed: %d chars", len(medicalResult.Content))
+
+			// Agent 2: Clinical data analyzer completes  
+			clinicalResult := &executionDomain.AgentResult{
+				AgentID:   "clinical-data-analyzer",
+				Status:    executionDomain.AgentResultStatusSuccess,
+				Content:   "CLINICAL DATA ANALYSIS:\n• Imaging interpretation: 2.5cm enhancing mass suggests high-grade glioma\n• Lab analysis: Normal CBC/CMP rules out systemic disease\n• Neurological findings: Papilledema + weakness = increased intracranial pressure\n• Differential diagnosis: 70% primary glioblastoma, 25% metastatic disease, 5% other\n• Staging considerations: Need tissue diagnosis and systemic workup",
+				Timestamp: time.Now().Add(5 * time.Second),
+				Metadata: map[string]interface{}{
+					"probability_glioblastoma": 0.70,
+					"probability_metastatic": 0.25,
+					"icp_present": true,
+					"tissue_diagnosis_required": true,
+				},
+			}
+			
+			err = executionPlanRepo.StoreAgentResult(ctx, clinicalResult)
+			require.NoError(t, err)
+			t.Logf("  ✅ Clinical data analyzer completed: %d chars", len(clinicalResult.Content))
+
+			// Now test the result synthesis - this is the KEY missing piece
+			t.Logf("\n🧠 SYNTHESIZING MULTI-AGENT RESULTS:")
+			
+			synthesizedResult, err := orchestrator.ProcessWithSynthesis(ctx, result.ExecutionPlanID, userInput, userID)
+			require.NoError(t, err)
+			require.NotEmpty(t, synthesizedResult)
+
+			t.Logf("\n📊 FINAL SYNTHESIZED RESULT:")
+			t.Logf("Length: %d characters", len(synthesizedResult))
+			t.Logf("Content preview: %s...", synthesizedResult[:200])
+
+			// Assertions: Verify the synthesis quality
+			assert.Greater(t, len(synthesizedResult), 500, "Synthesized result should be comprehensive")
+			
+			// Should contain insights from all agents
+			assert.Contains(t, synthesizedResult, "glioblastoma", "Should include medical analysis")
+			assert.Contains(t, synthesizedResult, "treatment", "Should include treatment planning")
+
+			// Should be structured for clinical use
+			assert.True(t, 
+				strings.Contains(synthesizedResult, "Assessment") || 
+				strings.Contains(synthesizedResult, "Summary") ||
+				strings.Contains(synthesizedResult, "Analysis"),
+				"Should have clinical structure")
+
+			t.Logf("\n✅ MULTI-AGENT HEALTHCARE SCENARIO COMPLETE!")
+
+		} else {
+			// For non-execute scenarios, verify appropriate handling
+			t.Logf("  Non-execute scenario handled appropriately")
+			assert.NotEmpty(t, result.Message, "Should provide meaningful response")
+		}
+	})
+}

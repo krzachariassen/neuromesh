@@ -92,25 +92,24 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	// Create infrastructure services
 	agentService := infrastructure.NewGraphAgentService(sf.graph)
 
-	// Create planning repository for structured execution plan persistence
+	// Create planning repositories
 	executionPlanRepo := planningInfra.NewGraphExecutionPlanRepository(sf.graph)
+	planningResultRepo := planningInfra.NewGraphPlanningRepository(sf.graph)
 
-	// Create decision repository for decision persistence
-	decisionRepo := planningInfra.NewGraphDecisionRepository(sf.graph)
-
-	// Create all application services with proper dependencies
-	aiDecisionEngine := planningApp.NewAIDecisionEngineWithRepositories(sf.aiProvider, executionPlanRepo, decisionRepo)
+	// Create all application services with proper dependencies using new unified planning approach
+	aiPlanningEngine := planningApp.NewAIPlanningEngineWithRepositories(sf.aiProvider, executionPlanRepo, planningResultRepo)
 	graphExplorer := NewGraphExplorer(agentService)
 	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker, executionPlanRepo)
 
 	// Create result synthesizer for intelligent result combination
 	resultSynthesizer := executionApp.NewAIResultSynthesizer(sf.aiProvider, executionPlanRepo)
 
-	// Wire everything together (without learning service for now - following YAGNI)
+	// Wire everything together using new unified planning approach
 	return NewOrchestratorService(
-		aiDecisionEngine,
+		aiPlanningEngine,
 		graphExplorer,
 		aiExecutionEngine,
+		sf.conversationService,
 		resultSynthesizer,
 		executionPlanRepo,
 		sf.logger,

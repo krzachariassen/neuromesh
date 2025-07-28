@@ -22,12 +22,17 @@ func (r *ResponseParser) ExtractSection(text, marker string) string {
 
 	section := parts[1]
 	// Find the end of this section (next marker or end of text)
-	nextMarkers := []string{"DECISION:", "CONFIDENCE:", "REASONING:", "CLARIFICATION:", "EXECUTION_PLAN:", "AGENT_COORDINATION:", "Intent:", "Category:", "Required_Agents:"}
+	nextMarkers := []string{
+		"DECISION:", "CONFIDENCE:", "REASONING:", "CLARIFICATION:", "EXECUTION_PLAN:", "AGENT_COORDINATION:",
+		"Intent:", "Category:", "Required_Agents:", "Reasoning:", "Confidence:",
+		"Planning_Type:", "Available_Agents:", "EXECUTION_PLAN:", "DIRECT_RESPONSE:",
+		"PLANNING_RESULT:", "EXECUTION_PLAN_JSON:",
+	}
 	minIndex := len(section)
 
 	for _, nextMarker := range nextMarkers {
 		if nextMarker != marker { // Don't end on the same marker we're looking for
-			if idx := strings.Index(section, nextMarker); idx > 0 && idx < minIndex {
+			if idx := strings.Index(section, nextMarker); idx >= 0 && idx < minIndex {
 				minIndex = idx
 			}
 		}
@@ -90,14 +95,63 @@ func (r *ResponseParser) ExtractRequiredAgents(analysis string) []string {
 		return []string{}
 	}
 
+	// Handle different formats:
+	// 1. Comma-separated: "agent1, agent2, agent3"
+	// 2. Single agent: "deployment-agent"
+	// 3. Bracketed: "[agent1, agent2]" or "[agent1]"
+	// 4. Empty or "none"
+
+	agentsStr = strings.TrimSpace(agentsStr)
+	if agentsStr == "" || agentsStr == "none" || agentsStr == "None" {
+		return []string{}
+	}
+
+	// Remove brackets if present (AI might format as "[agent1, agent2]")
+	agentsStr = strings.Trim(agentsStr, "[]")
+	agentsStr = strings.TrimSpace(agentsStr)
+
+	if agentsStr == "" {
+		return []string{}
+	}
+
 	// Parse comma-separated agent names
-	agents := strings.Split(agentsStr, ",")
-	result := make([]string, 0, len(agents))
-	for _, agent := range agents {
-		agent = strings.TrimSpace(agent)
-		if agent != "" && agent != "none" && agent != "None" {
-			result = append(result, agent)
+	var agents []string
+	if strings.Contains(agentsStr, ",") {
+		// Multiple agents separated by commas
+		agentParts := strings.Split(agentsStr, ",")
+		for _, agent := range agentParts {
+			agent = strings.TrimSpace(agent)
+			if agent != "" && agent != "none" && agent != "None" {
+				agents = append(agents, agent)
+			}
+		}
+	} else {
+		// Single agent
+		if agentsStr != "none" && agentsStr != "None" {
+			agents = append(agents, agentsStr)
 		}
 	}
-	return result
+
+	return agents
+}
+
+// ExtractPlanningType parses planning type from new planning format
+func (r *ResponseParser) ExtractPlanningType(analysis string) string {
+	planningType := r.ExtractSection(analysis, "Planning_Type:")
+	if planningType == "" {
+		planningType = r.ExtractSection(analysis, "PLANNING_TYPE:")
+	}
+
+	// Normalize to standard values
+	planningType = strings.ToUpper(strings.TrimSpace(planningType))
+	switch planningType {
+	case "EXECUTE", "EXECUTION":
+		return "EXECUTE"
+	case "CLARIFY", "CLARIFICATION":
+		return "CLARIFY"
+	case "RESPOND_DIRECTLY", "DIRECT_RESPONSE", "RESPOND":
+		return "RESPOND_DIRECTLY"
+	default:
+		return planningType
+	}
 }

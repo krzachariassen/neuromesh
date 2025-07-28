@@ -253,7 +253,8 @@ func (r *GraphConversationRepository) LinkExecutionPlan(ctx context.Context, con
 		"created_at": formatTime(time.Now().UTC()),
 	}
 
-	return r.graph.AddEdge(ctx, NodeTypeConversation, conversationID, "ExecutionPlan", planID, RelationshipLinkedToPlan, properties)
+	// Use the correct node type for execution plan - must match the planning domain
+	return r.graph.AddEdge(ctx, NodeTypeConversation, conversationID, "execution_plan", planID, RelationshipLinkedToPlan, properties)
 }
 
 // FindConversationsByUser finds conversations by user ID

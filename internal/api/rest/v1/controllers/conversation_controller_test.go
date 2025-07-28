@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"neuromesh/internal/api/rest/v1/domain"
 	convDomain "neuromesh/internal/conversation/domain"
 	"neuromesh/testHelpers"
 
@@ -59,12 +58,12 @@ func TestConversationController_GetConversationGraph(t *testing.T) {
 	controller.SetGraphService(mockGraphService)
 
 	conversationID := "test-conversation-id"
-	expectedGraph := &domain.GraphData{
-		Nodes: []domain.Node{
-			{ID: "node1", Type: "user", Label: "User Input"},
-			{ID: "node2", Type: "agent", Label: "Agent Response"},
+	expectedGraph := &convDomain.GraphData{
+		Nodes: []convDomain.GraphNode{
+			{ID: "node1", Type: "user", Data: map[string]interface{}{"name": "User Input"}},
+			{ID: "node2", Type: "agent", Data: map[string]interface{}{"name": "Agent Response"}},
 		},
-		Edges: []domain.Edge{
+		Edges: []convDomain.GraphEdge{
 			{ID: "edge1", Source: "node1", Target: "node2", Type: "flow"},
 		},
 	}

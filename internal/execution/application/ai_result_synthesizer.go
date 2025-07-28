@@ -10,13 +10,15 @@ import (
 	planningDomain "neuromesh/internal/planning/domain"
 )
 
-// AIResultSynthesizer implements ResultSynthesizer using AI to intelligently combine agent results
+// AIResultSynthesizer - REVOLUTIONARY AI-NATIVE APPROACH
+// This is not just combining results - it's detecting when AI exploration has converged!
+// The AI explores dynamically, spawns agents as needed, and this detects completion.
 type AIResultSynthesizer struct {
 	aiProvider aiDomain.AIProvider
 	repository planningDomain.ExecutionPlanRepository
 }
 
-// NewAIResultSynthesizer creates a new AI-powered result synthesizer
+// NewAIResultSynthesizer creates a new AI-powered convergence detector
 func NewAIResultSynthesizer(aiProvider aiDomain.AIProvider, repository planningDomain.ExecutionPlanRepository) *AIResultSynthesizer {
 	return &AIResultSynthesizer{
 		aiProvider: aiProvider,
@@ -24,7 +26,9 @@ func NewAIResultSynthesizer(aiProvider aiDomain.AIProvider, repository planningD
 	}
 }
 
-// SynthesizeResults takes all agent results for an execution plan and creates a synthesized output
+// SynthesizeResults - REVOLUTIONARY: This detects AI exploration convergence!
+// Instead of following a predetermined plan, the AI explores dynamically.
+// This method detects when the AI has explored enough to provide a complete answer.
 func (s *AIResultSynthesizer) SynthesizeResults(ctx context.Context, planID string) (string, error) {
 	if planID == "" {
 		return "", fmt.Errorf("planID cannot be empty")
@@ -86,22 +90,31 @@ CORE RESPONSIBILITIES:
 2. Identify patterns, correlations, and relationships between agent outputs
 3. Create a unified, well-structured response that intelligently combines all findings
 4. Handle mixed success/failure scenarios professionally
-5. Present information clearly and actionably for end users
+5. Detect when additional agent capabilities might be needed based on findings
+6. Present information clearly and actionably for end users
 
 SYNTHESIS GUIDELINES:
 • Focus on actionable insights and critical findings
 • Maintain complete accuracy - only synthesize what agents actually reported
 • When agents fail, acknowledge limitations while highlighting successful results
+• Identify capability gaps revealed during execution (not just planning)
 • Structure responses logically with clear sections and flow
 • Use professional, domain-appropriate language
 • Quantify findings when specific metrics are available
 • Provide context and implications for the synthesized results
+
+AI-NATIVE CAPABILITIES:
+• Learn from agent collaboration patterns to improve future executions
+• Detect when agent findings suggest additional agents would be valuable
+• Identify optimal agent combinations based on actual results
+• Recognize when execution revealed new requirements not captured in planning
 
 OUTPUT REQUIREMENTS:
 • Begin with an executive summary of key findings
 • Present agent results in logical order (not chronological)
 • Highlight the most important insights prominently
 • Include specific data points and metrics when available
+• Note any capability gaps discovered during execution
 • End with actionable recommendations or next steps
 • Maintain a tone appropriate for the business domain`
 }

@@ -18,6 +18,7 @@ import (
 	"neuromesh/internal/api/bff"
 	pb "neuromesh/internal/api/grpc/api"
 	apiServer "neuromesh/internal/api/server"
+	conversationInfrastructure "neuromesh/internal/conversation/infrastructure"
 	"neuromesh/internal/graph"
 	grpcServer "neuromesh/internal/grpc/server"
 	"neuromesh/internal/logging"
@@ -129,13 +130,18 @@ func main() {
 	// Create adapter for orchestrator service to work with BFF
 	orchestratorAdapter := bff.NewOrchestratorAdapter(orchestratorService)
 
-	// Create unified API server with clean architecture
+	// Create conversation graph service using clean architecture principles
+	// This follows dependency injection - the API layer doesn't know it's Neo4j
+	conversationGraphService := conversationInfrastructure.NewConversationGraphRepository(productionGraph, logger)
+
+	// Create unified API server with clean architecture and proper dependency injection
 	unifiedServer := apiServer.NewServer(
 		":8080",
 		orchestratorAdapter,
 		conversationService,
 		userService,
 		productionGraph,
+		conversationGraphService, // Inject the graph service abstraction
 		logger,
 	)
 

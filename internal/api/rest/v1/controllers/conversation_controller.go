@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -9,17 +8,13 @@ import (
 	"neuromesh/internal/api/rest/v1/domain"
 	"neuromesh/internal/api/rest/v1/responses"
 	conversationApp "neuromesh/internal/conversation/application"
+	conversationDomain "neuromesh/internal/conversation/domain"
 )
-
-// GraphService defines the interface for graph operations
-type GraphService interface {
-	GetConversationGraph(ctx context.Context, conversationID string) (*domain.GraphData, error)
-}
 
 // ConversationController handles HTTP requests for conversation resources
 type ConversationController struct {
 	conversationService conversationApp.ConversationService
-	graphService        GraphService
+	graphService        conversationDomain.ConversationGraphService
 }
 
 // NewConversationController creates a new conversation controller
@@ -29,8 +24,8 @@ func NewConversationController(conversationService conversationApp.ConversationS
 	}
 }
 
-// SetGraphService sets the graph service (for testing)
-func (c *ConversationController) SetGraphService(graphService GraphService) {
+// SetGraphService sets the graph service (for testing and dependency injection)
+func (c *ConversationController) SetGraphService(graphService conversationDomain.ConversationGraphService) {
 	c.graphService = graphService
 }
 
@@ -79,14 +74,17 @@ func (c *ConversationController) GetConversationGraph(w http.ResponseWriter, r *
 		return
 	}
 
-	// Get graph data from service
-	graphData, err := c.graphService.GetConversationGraph(r.Context(), conversationID)
+	// Get graph data from domain service
+	domainGraphData, err := c.graphService.GetConversationGraph(r.Context(), conversationID)
 	if err != nil {
 		responses.InternalError(w, "Failed to get conversation graph")
 		return
 	}
 
-	responses.Success(w, graphData)
+	// Convert domain graph data to API response format
+	apiGraphData := c.convertDomainGraphToAPIGraph(domainGraphData)
+
+	responses.Success(w, apiGraphData)
 }
 
 // extractConversationID extracts conversation ID from /api/v1/conversations/{id}
@@ -118,5 +116,43 @@ func (c *ConversationController) conversationToResponse(conv interface{}) domain
 		Status:    "active",
 		CreatedAt: time.Now().Format(time.RFC3339),
 		UpdatedAt: time.Now().Format(time.RFC3339),
+	}
+}
+
+// convertDomainGraphToAPIGraph converts domain graph data to API response format
+func (c *ConversationController) convertDomainGraphToAPIGraph(domainGraph *conversationDomain.GraphData) *domain.GraphData {
+	// Convert domain nodes to API nodes
+	apiNodes := make([]domain.Node, len(domainGraph.Nodes))
+	for i, domainNode := range domainGraph.Nodes {
+		apiNodes[i] = domain.Node{
+			ID:   domainNode.ID,
+			Type: domainNode.Type,
+			Data: domainNode.Data,
+			Position: func() *domain.NodePosition {
+				if domainNode.Position != nil {
+					return &domain.NodePosition{
+						X: domainNode.Position.X,
+						Y: domainNode.Position.Y,
+					}
+				}
+				return nil
+			}(),
+		}
+	}
+
+	// Convert domain edges to API edges
+	apiEdges := make([]domain.Edge, len(domainGraph.Edges))
+	for i, domainEdge := range domainGraph.Edges {
+		apiEdges[i] = domain.Edge{
+			ID:     domainEdge.ID,
+			Source: domainEdge.Source,
+			Target: domainEdge.Target,
+			Type:   domainEdge.Type,
+		}
+	}
+
+	return &domain.GraphData{
+		Nodes: apiNodes,
+		Edges: apiEdges,
 	}
 }

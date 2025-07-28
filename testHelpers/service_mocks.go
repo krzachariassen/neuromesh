@@ -2,11 +2,12 @@ package testHelpers
 
 import (
 	"context"
+	"errors"
 	"time"
 
-	apiDomain "neuromesh/internal/api/rest/v1/domain"
 	conversationApp "neuromesh/internal/conversation/application"
 	conversationDomain "neuromesh/internal/conversation/domain"
+	planningDomain "neuromesh/internal/planning/domain"
 	userApp "neuromesh/internal/user/application"
 	userDomain "neuromesh/internal/user/domain"
 
@@ -196,6 +197,7 @@ func (m *MockUserService) EnsureSchema(ctx context.Context) error {
 // Ensure mocks implement the interfaces
 var _ conversationApp.ConversationService = (*MockConversationService)(nil)
 var _ userApp.UserService = (*MockUserService)(nil)
+var _ conversationDomain.ConversationGraphService = (*MockGraphService)(nil)
 
 // MockGraphService provides a testify-based mock for graph service operations
 type MockGraphService struct {
@@ -207,7 +209,89 @@ func NewMockGraphService() *MockGraphService {
 	return &MockGraphService{}
 }
 
-func (m *MockGraphService) GetConversationGraph(ctx context.Context, conversationID string) (*apiDomain.GraphData, error) {
+func (m *MockGraphService) GetConversationGraph(ctx context.Context, conversationID string) (*conversationDomain.GraphData, error) {
 	args := m.Called(ctx, conversationID)
-	return args.Get(0).(*apiDomain.GraphData), args.Error(1)
+	return args.Get(0).(*conversationDomain.GraphData), args.Error(1)
+}
+
+func (m *MockGraphService) GetConversationSubgraph(ctx context.Context, conversationID string, nodeTypes []string) (*conversationDomain.GraphData, error) {
+	args := m.Called(ctx, conversationID, nodeTypes)
+	return args.Get(0).(*conversationDomain.GraphData), args.Error(1)
+}
+
+func (m *MockGraphService) GetGraphStats(ctx context.Context, conversationID string) (map[string]interface{}, error) {
+	args := m.Called(ctx, conversationID)
+	return args.Get(0).(map[string]interface{}), args.Error(1)
+}
+
+// MockPlanningResultRepository provides a testify-based mock for planning result repository operations
+type MockPlanningResultRepository struct {
+	// Control behavior
+	ShouldFailStore bool
+
+	// Track calls
+	StoreCalled               bool
+	LinkToRequestCalled       bool
+	LinkToExecutionPlanCalled bool
+
+	// Capture arguments
+	StoredResult           *planningDomain.PlanningResult
+	LinkedPlanningResultID string
+	LinkedRequestID        string
+	LinkedExecutionPlanID  string
+
+	// Return values
+	StoredResults []*planningDomain.PlanningResult
+}
+
+func (m *MockPlanningResultRepository) Store(ctx context.Context, result *planningDomain.PlanningResult) error {
+	m.StoreCalled = true
+	m.StoredResult = result
+	m.StoredResults = append(m.StoredResults, result)
+
+	if m.ShouldFailStore {
+		return errors.New("mock store error")
+	}
+	return nil
+}
+
+func (m *MockPlanningResultRepository) GetByID(ctx context.Context, id string) (*planningDomain.PlanningResult, error) {
+	for _, result := range m.StoredResults {
+		if result.ID == id {
+			return result, nil
+		}
+	}
+	return nil, errors.New("planning result not found")
+}
+
+func (m *MockPlanningResultRepository) GetByRequestID(ctx context.Context, requestID string) ([]*planningDomain.PlanningResult, error) {
+	var results []*planningDomain.PlanningResult
+	for _, result := range m.StoredResults {
+		if result.RequestID == requestID {
+			results = append(results, result)
+		}
+	}
+	return results, nil
+}
+
+func (m *MockPlanningResultRepository) Update(ctx context.Context, result *planningDomain.PlanningResult) error {
+	return nil
+}
+
+func (m *MockPlanningResultRepository) Delete(ctx context.Context, id string) error {
+	return nil
+}
+
+func (m *MockPlanningResultRepository) LinkToRequest(ctx context.Context, planningResultID, requestID string) error {
+	m.LinkToRequestCalled = true
+	m.LinkedPlanningResultID = planningResultID
+	m.LinkedRequestID = requestID
+	return nil
+}
+
+func (m *MockPlanningResultRepository) LinkToExecutionPlan(ctx context.Context, planningResultID, executionPlanID string) error {
+	m.LinkToExecutionPlanCalled = true
+	m.LinkedPlanningResultID = planningResultID
+	m.LinkedExecutionPlanID = executionPlanID
+	return nil
 }

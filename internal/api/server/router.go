@@ -1,14 +1,12 @@
 package server
 
 import (
-	"context"
 	"net/http"
 
 	"neuromesh/internal/api/bff"
 	"neuromesh/internal/api/rest/v1/controllers"
-	"neuromesh/internal/api/rest/v1/domain"
 	conversationApp "neuromesh/internal/conversation/application"
-	"neuromesh/internal/graph"
+	conversationDomain "neuromesh/internal/conversation/domain"
 	"neuromesh/internal/logging"
 )
 
@@ -23,7 +21,7 @@ type Router struct {
 // NewRouter creates a new router with all API endpoints configured
 func NewRouter(
 	conversationService conversationApp.ConversationService,
-	graphService controllers.GraphService,
+	graphService conversationDomain.ConversationGraphService,
 	bffService *bff.Service,
 	logger logging.Logger,
 ) *Router {
@@ -171,187 +169,4 @@ func (r *Router) registerUtilityRoutes() {
 	})
 
 	r.logger.Info("Utility routes registered", "endpoints", []string{"/health", "/api"})
-}
-
-// GraphServiceAdapter adapts the graph.Graph to the controllers.GraphService interface
-type GraphServiceAdapter struct {
-	graph graph.Graph
-}
-
-// NewGraphServiceAdapter creates a new adapter
-func NewGraphServiceAdapter(g graph.Graph) *GraphServiceAdapter {
-	return &GraphServiceAdapter{graph: g}
-}
-
-// GetConversationGraph implements controllers.GraphService interface
-func (a *GraphServiceAdapter) GetConversationGraph(ctx context.Context, conversationID string) (*domain.GraphData, error) {
-	// TODO: Implement actual graph data retrieval
-	// For now, return richer mock data to test the visualization
-	return &domain.GraphData{
-		Nodes: []domain.Node{
-			// User node
-			{
-				ID:   "user-1",
-				Type: "user",
-				Data: map[string]interface{}{
-					"name":   "Alice Johnson",
-					"status": "active",
-				},
-				Position: &domain.NodePosition{X: 50, Y: 150},
-			},
-			// Conversation node
-			{
-				ID:   conversationID,
-				Type: "conversation",
-				Data: map[string]interface{}{
-					"title":  "AI Task Planning Session",
-					"status": "active",
-				},
-				Position: &domain.NodePosition{X: 300, Y: 150},
-			},
-			// Agent nodes
-			{
-				ID:   "agent-text-processor",
-				Type: "agent",
-				Data: map[string]interface{}{
-					"name":   "Text Processor",
-					"status": "busy",
-				},
-				Position: &domain.NodePosition{X: 550, Y: 50},
-			},
-			{
-				ID:   "agent-orchestrator",
-				Type: "agent",
-				Data: map[string]interface{}{
-					"name":   "AI Orchestrator",
-					"status": "active",
-				},
-				Position: &domain.NodePosition{X: 550, Y: 150},
-			},
-			{
-				ID:   "agent-code-generator",
-				Type: "agent",
-				Data: map[string]interface{}{
-					"name":   "Code Generator",
-					"status": "idle",
-				},
-				Position: &domain.NodePosition{X: 550, Y: 250},
-			},
-			// Execution plan nodes
-			{
-				ID:   "plan-1",
-				Type: "execution_plan",
-				Data: map[string]interface{}{
-					"title":  "Document Analysis Plan",
-					"status": "executing",
-				},
-				Position: &domain.NodePosition{X: 800, Y: 100},
-			},
-			{
-				ID:   "plan-2",
-				Type: "execution_plan",
-				Data: map[string]interface{}{
-					"title":  "Code Generation Plan",
-					"status": "pending",
-				},
-				Position: &domain.NodePosition{X: 800, Y: 200},
-			},
-			// Execution step nodes
-			{
-				ID:   "step-1",
-				Type: "execution_step",
-				Data: map[string]interface{}{
-					"title":  "Parse Document",
-					"status": "completed",
-				},
-				Position: &domain.NodePosition{X: 1050, Y: 50},
-			},
-			{
-				ID:   "step-2",
-				Type: "execution_step",
-				Data: map[string]interface{}{
-					"title":  "Extract Entities",
-					"status": "executing",
-				},
-				Position: &domain.NodePosition{X: 1050, Y: 150},
-			},
-			// Result node
-			{
-				ID:   "result-1",
-				Type: "result",
-				Data: map[string]interface{}{
-					"title":  "Analysis Results",
-					"status": "ready",
-				},
-				Position: &domain.NodePosition{X: 1300, Y: 100},
-			},
-		},
-		Edges: []domain.Edge{
-			// User to conversation
-			{
-				ID:     "edge-1",
-				Source: "user-1",
-				Target: conversationID,
-				Type:   "participates_in",
-			},
-			// Conversation to agents
-			{
-				ID:     "edge-2",
-				Source: conversationID,
-				Target: "agent-orchestrator",
-				Type:   "assigned_to",
-			},
-			{
-				ID:     "edge-3",
-				Source: "agent-orchestrator",
-				Target: "agent-text-processor",
-				Type:   "delegates_to",
-			},
-			{
-				ID:     "edge-4",
-				Source: "agent-orchestrator",
-				Target: "agent-code-generator",
-				Type:   "delegates_to",
-			},
-			// Agents to execution plans
-			{
-				ID:     "edge-5",
-				Source: "agent-text-processor",
-				Target: "plan-1",
-				Type:   "creates",
-			},
-			{
-				ID:     "edge-6",
-				Source: "agent-code-generator",
-				Target: "plan-2",
-				Type:   "creates",
-			},
-			// Plans to steps
-			{
-				ID:     "edge-7",
-				Source: "plan-1",
-				Target: "step-1",
-				Type:   "contains",
-			},
-			{
-				ID:     "edge-8",
-				Source: "plan-1",
-				Target: "step-2",
-				Type:   "contains",
-			},
-			// Steps to results
-			{
-				ID:     "edge-9",
-				Source: "step-1",
-				Target: "result-1",
-				Type:   "produces",
-			},
-			{
-				ID:     "edge-10",
-				Source: "step-2",
-				Target: "result-1",
-				Type:   "contributes_to",
-			},
-		},
-	}, nil
 }

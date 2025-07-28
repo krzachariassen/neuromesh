@@ -1,14 +1,15 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"neuromesh/internal/api/rest/v1/controllers"
-	"neuromesh/internal/api/rest/v1/domain"
+	conversationDomain "neuromesh/internal/conversation/domain"
 	"neuromesh/testHelpers"
+
+	"github.com/stretchr/testify/mock"
 )
 
 // TDD RED Phase: Integration test that exposes missing server route wiring
@@ -17,16 +18,18 @@ func TestCleanAPIIntegration_ConversationGraph(t *testing.T) {
 
 	// Create mock conversation service using existing test helpers
 	mockConversationService := testHelpers.NewMockConversationService()
-	mockGraphService := &MockGraphService{
-		graphData: &domain.GraphData{
-			Nodes: []domain.Node{
-				{ID: "test-node", Type: "user", Label: "Test User"},
-			},
-			Edges: []domain.Edge{
-				{ID: "test-edge", Source: "test-node", Target: "conv-1", Type: "created"},
-			},
+	mockGraphService := testHelpers.NewMockGraphService()
+
+	// Set up mock expectations
+	expectedGraphData := &conversationDomain.GraphData{
+		Nodes: []conversationDomain.GraphNode{
+			{ID: "test-node", Type: "user", Data: map[string]interface{}{"name": "Test User"}},
+		},
+		Edges: []conversationDomain.GraphEdge{
+			{ID: "test-edge", Source: "test-node", Target: "conv-1", Type: "created"},
 		},
 	}
+	mockGraphService.On("GetConversationGraph", mock.Anything, "test-conversation-1").Return(expectedGraphData, nil)
 
 	// Create the clean controller
 	controller := controllers.NewConversationController(mockConversationService)
@@ -66,13 +69,4 @@ func TestCleanAPIIntegration_ConversationGraph(t *testing.T) {
 	if contentType != "application/json" {
 		t.Errorf("Expected application/json, got %s", contentType)
 	}
-}
-
-// Mock graph service for testing
-type MockGraphService struct {
-	graphData *domain.GraphData
-}
-
-func (m *MockGraphService) GetConversationGraph(ctx context.Context, conversationID string) (*domain.GraphData, error) {
-	return m.graphData, nil
 }

@@ -131,10 +131,11 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 
 	// 4. Process through orchestrator using the new interface
 	orchestratorRequest := &orchestratorApp.OrchestratorRequest{
-		UserInput: message,
-		UserID:    user.ID,
-		SessionID: sessionID,
-		MessageID: userMessageID,
+		UserInput:      message,
+		UserID:         user.ID,
+		SessionID:      sessionID,
+		MessageID:      userMessageID,
+		ConversationID: conversation.ID, // Pass conversation ID for cross-domain relationships
 	}
 
 	aiResponse, err := s.orchestrator.ProcessUserRequest(ctx, orchestratorRequest)
@@ -160,6 +161,10 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 			"conversationID", conversation.ID, "messageID", assistantMessageID)
 		// Continue with response even if storage fails
 	}
+
+	// Note: Relationship management (linking execution plans, decisions, etc.)
+	// should be handled by the orchestrator as part of domain logic,
+	// not by the BFF layer. The BFF should only handle presentation concerns.
 
 	// 6. Build and return web response
 	response := s.buildWebResponse(aiResponse, sessionID)
@@ -276,18 +281,18 @@ func (s *Service) buildAssistantMetadata(aiResponse *orchestratorApp.Orchestrato
 	}
 
 	// Add decision information if available
-	if aiResponse.Decision != nil {
-		metadata["decision_type"] = string(aiResponse.Decision.Type)
-		metadata["decision_id"] = aiResponse.Decision.ID
-		if aiResponse.Decision.Action != "" {
-			metadata["decision_action"] = aiResponse.Decision.Action
+	if aiResponse.PlanningResult != nil {
+		metadata["planning_type"] = string(aiResponse.PlanningResult.Type)
+		metadata["planning_id"] = aiResponse.PlanningResult.ID
+		metadata["planning_intent"] = aiResponse.PlanningResult.Intent
+		metadata["planning_confidence"] = aiResponse.PlanningResult.Confidence
+		metadata["planning_reasoning"] = aiResponse.PlanningResult.Reasoning
+		if len(aiResponse.PlanningResult.RequiredAgents) > 0 {
+			metadata["required_agents"] = aiResponse.PlanningResult.RequiredAgents
 		}
-	}
-
-	// Add analysis information if available
-	if aiResponse.Analysis != nil {
-		metadata["analysis_confidence"] = aiResponse.Analysis.Confidence
-		metadata["analysis_reasoning"] = aiResponse.Analysis.Reasoning
+		if len(aiResponse.PlanningResult.AgentGap) > 0 {
+			metadata["agent_gap"] = aiResponse.PlanningResult.AgentGap
+		}
 	}
 
 	return metadata
