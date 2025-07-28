@@ -10,9 +10,9 @@ import (
 type PlanningType string
 
 const (
-	PlanningTypeClarify         PlanningType = "CLARIFY"
-	PlanningTypeExecute         PlanningType = "EXECUTE"
-	PlanningTypeRespondDirectly PlanningType = "RESPOND_DIRECTLY"
+	PlanningTypeClarify PlanningType = "CLARIFY"
+	PlanningTypeExecute PlanningType = "EXECUTE"
+	// PlanningTypeRespondDirectly removed - unified architecture uses only EXECUTE
 )
 
 // PlanningResult represents the result of AI planning for a user request
@@ -58,15 +58,15 @@ func NewExecutePlanningResult(requestID, intent, category string, confidence int
 	}
 }
 
-// NewClarifyPlanningResult creates a planning result for clarification
-func NewClarifyPlanningResult(requestID, intent, category string, confidence int, availableAgents, requiredAgents []string, clarificationQuestion, reasoning string) *PlanningResult {
+// NewClarificationPlanningResult creates a planning result for clarification
+func NewClarificationPlanningResult(requestID, intent, category string, confidence int, clarificationQuestion, reasoning string) *PlanningResult {
 	return &PlanningResult{
 		ID:                    uuid.New().String(),
 		RequestID:             requestID,
 		Type:                  PlanningTypeClarify,
-		AvailableAgents:       availableAgents,
-		RequiredAgents:        requiredAgents,
-		AgentGap:              calculateAgentGap(availableAgents, requiredAgents),
+		AvailableAgents:       []string{},
+		RequiredAgents:        []string{},
+		AgentGap:              []string{},
 		ClarificationQuestion: clarificationQuestion,
 		Intent:                intent,
 		Category:              category,
@@ -76,38 +76,7 @@ func NewClarifyPlanningResult(requestID, intent, category string, confidence int
 	}
 }
 
-// NewRespondDirectlyPlanningResult creates a planning result for direct response
-func NewRespondDirectlyPlanningResult(requestID, intent, category string, confidence int, availableAgents, requiredAgents []string, directResponse, reasoning string) *PlanningResult {
-	return &PlanningResult{
-		ID:              uuid.New().String(),
-		RequestID:       requestID,
-		Type:            PlanningTypeRespondDirectly,
-		AvailableAgents: availableAgents,
-		RequiredAgents:  requiredAgents,
-		AgentGap:        calculateAgentGap(availableAgents, requiredAgents),
-		DirectResponse:  directResponse,
-		Intent:          intent,
-		Category:        category,
-		Confidence:      confidence,
-		Reasoning:       reasoning,
-		Timestamp:       time.Now(),
-	}
-}
-
-// IsExecutable returns true if this planning result should be executed
-func (p *PlanningResult) IsExecutable() bool {
-	return p.Type == PlanningTypeExecute
-}
-
-// NeedsClarification returns true if clarification is needed
-func (p *PlanningResult) NeedsClarification() bool {
-	return p.Type == PlanningTypeClarify
-}
-
-// ShouldRespondDirectly returns true if should respond directly
-func (p *PlanningResult) ShouldRespondDirectly() bool {
-	return p.Type == PlanningTypeRespondDirectly
-}
+// Unified Architecture: No NewRespondDirectlyPlanningResult - everything goes through execution
 
 // HasAgentGap returns true if there are required agents that are not available
 func (p *PlanningResult) HasAgentGap() bool {

@@ -18,7 +18,7 @@ func TestMultiAgentWorkflowGap(t *testing.T) {
 		ctx := context.Background()
 		aiProvider := testHelpers.SetupRealAIProvider(t)
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()
-		
+
 		// Use AI result synthesizer directly to test the synthesis capability
 		resultSynthesizer := executionApp.NewAIResultSynthesizer(aiProvider, mockRepo)
 
@@ -29,23 +29,23 @@ func TestMultiAgentWorkflowGap(t *testing.T) {
 
 		// Act: Try to synthesize results from multiple agents
 		t.Logf("\n🧠 TESTING RESULT SYNTHESIS:")
-		
+
 		synthesizedResult, err := resultSynthesizer.SynthesizeResults(ctx, planID)
-		
+
 		if err != nil {
 			t.Logf("❌ Result synthesis failed: %v", err)
 			t.Logf("💡 This exposes the architectural gap!")
-			
+
 			// This should fail because no agent results exist yet
 			assert.Contains(t, err.Error(), "no agent results found", "Should indicate missing agent results")
-			
+
 			t.Logf("\n📊 ARCHITECTURAL GAP ANALYSIS:")
 			t.Logf("Current result synthesizer exists but missing:")
 			t.Logf("  ❌ Agent execution completion tracking")
 			t.Logf("  ❌ Result collection from multiple agents")
 			t.Logf("  ❌ Integration with orchestrator flow")
 			t.Logf("  ❌ Complete multi-agent coordination")
-			
+
 		} else {
 			t.Logf("✅ Unexpected success: %d chars", len(synthesizedResult))
 			t.Logf("   This would mean the architecture is complete!")

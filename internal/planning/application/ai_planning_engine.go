@@ -65,14 +65,14 @@ Your planning must determine:
 5. Planning_Type: How should this request be handled?
 
 PLANNING_TYPES:
-- EXECUTE: Create execution plan using available agents
+- EXECUTE: Create execution plan using available agents (PREFERRED - use generic-agent for simple requests)
 - CLARIFY: Ask for clarification when request is unclear or confidence < 80%
-- RESPOND_DIRECTLY: Provide direct guidance/information when no agents needed
 
-AGENT_VALIDATION:
-- Only use agents that are actually available in the AVAILABLE_AGENTS list
-- If required agents are not available, use CLARIFY to explain limitations
-- For guidance/tutorial requests, use RESPOND_DIRECTLY
+UNIFIED_ARCHITECTURE_RULES:
+- ALL requests should use EXECUTE with execution plans
+- Use 'generic-agent' for simple questions, guidance, tutorials, and general information
+- Only use CLARIFY when the request is genuinely ambiguous or unclear
+- NO direct responses - everything goes through agent execution for consistency
 
 Respond in this EXACT format:
 
@@ -81,8 +81,8 @@ Intent: [clear intent]
 Category: [domain area]
 Confidence: [0-100]
 Available_Agents: [list from available agents]
-Required_Agents: [list specific agents needed - must be from available agents]
-Planning_Type: [EXECUTE|CLARIFY|RESPOND_DIRECTLY]
+Required_Agents: [list specific agents needed - use 'generic-agent' for simple requests]
+Planning_Type: [EXECUTE|CLARIFY]
 Reasoning: [detailed reasoning for planning decisions - this is internal analysis, NOT user-facing content]
 
 [If EXECUTE]:
@@ -100,17 +100,7 @@ EXECUTION_PLAN:
 
 [If CLARIFY]:
 CLARIFICATION:
-[question to ask user for clarification]
-
-[If RESPOND_DIRECTLY]:
-DIRECT_RESPONSE:
-[Write the complete user-facing response here - this is what the user will see directly. Do NOT put meta-analysis here.]
-
-[If CLARIFY]:
-CLARIFICATION: [specific question to ask user]
-
-[If RESPOND_DIRECTLY]:
-DIRECT_RESPONSE: [The exact response text that should be shown to the user - comprehensive guidance, answers, or information that directly addresses their request]`
+[question to ask user for clarification]`
 
 	userPrompt := fmt.Sprintf(`User ID: %s
 Request: %s
@@ -171,20 +161,12 @@ Create a comprehensive execution plan for this request.`, userID, userInput)
 
 	case "CLARIFY":
 		clarificationQuestion := e.responseParser.ExtractSection(response, "CLARIFICATION:")
-		planningResult = domain.NewClarifyPlanningResult(
-			requestID, intent, category, confidence, availableAgents,
-			requiredAgents, reasoning, clarificationQuestion,
-		)
-
-	case "RESPOND_DIRECTLY":
-		directResponse := e.responseParser.ExtractSection(response, "DIRECT_RESPONSE:")
-		planningResult = domain.NewRespondDirectlyPlanningResult(
-			requestID, intent, category, confidence, availableAgents,
-			requiredAgents, reasoning, directResponse,
+		planningResult = domain.NewClarificationPlanningResult(
+			requestID, intent, category, confidence, clarificationQuestion, reasoning,
 		)
 
 	default:
-		return nil, fmt.Errorf("unknown planning type: %s", planningType)
+		return nil, fmt.Errorf("unified architecture: unknown planning type '%s' - only EXECUTE and CLARIFY are supported", planningType)
 	}
 
 	// Store planning result in repository if available

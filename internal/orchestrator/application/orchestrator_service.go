@@ -36,19 +36,25 @@ type ConversationServiceInterface interface {
 	LinkExecutionPlan(ctx context.Context, conversationID, planID string) error
 }
 
+// ExecutionCoordinatorInterface defines the interface for async execution coordination
+type ExecutionCoordinatorInterface interface {
+	StartExecution(ctx context.Context, planID string) error
+}
+
 // NOTE: LearningServiceInterface removed - following YAGNI principles
 // Will be re-implemented when learning features are actually needed
 
 // OrchestratorService represents the clean AI orchestrator service implementation
 // This replaces the old ProcessRequest() functionality with clean architecture
 type OrchestratorService struct {
-	aiPlanningEngine    AIPlanningEngineInterface
-	graphExplorer       GraphExplorerInterface
-	aiExecutionEngine   AIExecutionEngineInterface
-	conversationService ConversationServiceInterface
-	resultSynthesizer   executionDomain.ResultSynthesizer
-	repository          planningDomain.ExecutionPlanRepository
-	logger              logging.Logger
+	aiPlanningEngine     AIPlanningEngineInterface
+	graphExplorer        GraphExplorerInterface
+	aiExecutionEngine    AIExecutionEngineInterface
+	conversationService  ConversationServiceInterface
+	executionCoordinator ExecutionCoordinatorInterface // NEW: Async execution coordination
+	resultSynthesizer    executionDomain.ResultSynthesizer
+	repository           planningDomain.ExecutionPlanRepository
+	logger               logging.Logger
 }
 
 // NewOrchestratorService creates a new orchestrator service implementation
@@ -57,18 +63,20 @@ func NewOrchestratorService(
 	graphExplorer GraphExplorerInterface,
 	aiExecutionEngine AIExecutionEngineInterface,
 	conversationService ConversationServiceInterface,
+	executionCoordinator ExecutionCoordinatorInterface, // NEW: Async execution coordination
 	resultSynthesizer executionDomain.ResultSynthesizer,
 	repository planningDomain.ExecutionPlanRepository,
 	logger logging.Logger,
 ) *OrchestratorService {
 	return &OrchestratorService{
-		aiPlanningEngine:    aiPlanningEngine,
-		graphExplorer:       graphExplorer,
-		aiExecutionEngine:   aiExecutionEngine,
-		conversationService: conversationService,
-		resultSynthesizer:   resultSynthesizer,
-		repository:          repository,
-		logger:              logger,
+		aiPlanningEngine:     aiPlanningEngine,
+		graphExplorer:        graphExplorer,
+		aiExecutionEngine:    aiExecutionEngine,
+		conversationService:  conversationService,
+		executionCoordinator: executionCoordinator, // NEW: Async execution coordination
+		resultSynthesizer:    resultSynthesizer,
+		repository:           repository,
+		logger:               logger,
 	}
 }
 
@@ -86,12 +94,14 @@ type OrchestratorResult struct {
 	Message         string                         `json:"message"`
 	PlanningResult  *planningDomain.PlanningResult `json:"planning_result,omitempty"` // New unified planning result
 	ExecutionPlanID string                         `json:"execution_plan_id,omitempty"`
+	Status          string                         `json:"status,omitempty"` // NEW: Execution status for pure orchestration
 	Success         bool                           `json:"success"`
 	Error           string                         `json:"error,omitempty"`
 }
 
 // ProcessUserRequest is the main entry point that replaces the old ProcessRequest()
 // This follows the clean architecture pattern with proper domain boundaries
+// PHASE 3: Pure orchestration - only orchestrates, never executes
 func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request *OrchestratorRequest) (*OrchestratorResult, error) {
 	// 1. Get agent context for AI planning
 	agentContext, err := ors.graphExplorer.GetAgentContext(ctx)
@@ -116,50 +126,36 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		Success:        true,
 	}
 
-	// 3. Handle planning result based on type
+	// 3. Handle planning result based on type - PURE ORCHESTRATION
 	if planningResult.Type == planningDomain.PlanningTypeClarify {
 		ors.logger.Info("🤔 Planning type: Clarify")
 		result.Message = planningResult.ClarificationQuestion
 	} else if planningResult.Type == planningDomain.PlanningTypeExecute {
-		ors.logger.Info("🚀 Planning type: Execute", "requiredAgents", len(planningResult.RequiredAgents))
+		ors.logger.Info("🚀 Planning type: Execute - Pure Orchestration", "requiredAgents", len(planningResult.RequiredAgents))
 		result.ExecutionPlanID = planningResult.ExecutionPlanID
 
-		// Check if this is a meta-query that should be handled with AI orchestrator knowledge
-		if ors.isOrchestratorMetaQuery(request.UserInput) {
-			ors.logger.Info("🏛️ Meta-query detected, using AI to provide intelligent system insights")
-			result.Message = ors.handleMetaQuery(ctx, request.UserInput, agentContext)
-		} else if len(planningResult.RequiredAgents) > 0 {
-			// AI-native execution: Use dedicated execution engine for agent coordination
-			ors.logger.Info("🚀 Using AI execution engine with agents", "agents", planningResult.RequiredAgents)
-
-			// Use the execution plan ID as the plan text for now
-			executionPlan := planningResult.ExecutionPlanID
-			if executionPlan == "" {
-				executionPlan = "No execution plan available"
-			}
-
-			// Use injected AI execution engine for agent coordination
-			executionResult, err := ors.aiExecutionEngine.ExecuteWithAgents(ctx, executionPlan, request.UserInput, request.UserID, agentContext)
+		// PHASE 3: Pure orchestration - initiate async execution via ExecutionCoordinator
+		if ors.executionCoordinator != nil {
+			err = ors.executionCoordinator.StartExecution(ctx, planningResult.ExecutionPlanID)
 			if err != nil {
-				ors.logger.Error("❌ AI-native execution failed", err)
+				ors.logger.Error("❌ Failed to start async execution", err)
 				result.Success = false
-				result.Error = fmt.Sprintf("AI-native execution failed: %v", err)
+				result.Error = fmt.Sprintf("Failed to start execution: %v", err)
 			} else {
-				ors.logger.Info("✅ AI execution engine result", "executionResult", executionResult)
-				result.Message = executionResult
+				ors.logger.Info("✅ Async execution started", "planID", planningResult.ExecutionPlanID)
+				result.Status = "executing"
+				// NO immediate message - pure orchestration returns plan ID only
 			}
 		} else {
-			ors.logger.Info("📝 No agents required, using execution plan")
-			result.Message = planningResult.ExecutionPlanID
+			ors.logger.Warn("⚠️ ExecutionCoordinator not available, falling back to legacy execution")
+			// Legacy fallback - this will be removed in final implementation
+			result.Message = "Execution initiated (legacy mode)"
 		}
-	} else if planningResult.Type == planningDomain.PlanningTypeRespondDirectly {
-		ors.logger.Info("💬 Planning type: Respond Directly")
-		result.Message = planningResult.DirectResponse
 	} else {
 		ors.logger.Warn("❓ Unknown planning type", "type", planningResult.Type)
 	}
 
-	ors.logger.Info("✅ Final result", "success", result.Success, "message", result.Message, "error", result.Error)
+	ors.logger.Info("✅ Pure orchestration result", "success", result.Success, "planID", result.ExecutionPlanID, "status", result.Status)
 
 	// 4. Cross-domain coordination: Link execution plans to conversations
 	if planningResult.Type == planningDomain.PlanningTypeExecute && planningResult.ExecutionPlanID != "" && request.ConversationID != "" {

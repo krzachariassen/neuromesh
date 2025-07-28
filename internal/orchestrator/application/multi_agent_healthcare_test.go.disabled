@@ -20,10 +20,10 @@ func TestMultiAgentHealthcareScenario(t *testing.T) {
 		// Arrange: Set up REAL AI with actual execution workflow
 		ctx := context.Background()
 		aiProvider := testHelpers.SetupRealAIProvider(t)
-		
+
 		// Create real repositories for execution tracking
 		executionPlanRepo := testHelpers.NewMockExecutionPlanRepository()
-		
+
 		// Create orchestrator with existing constructor for now
 		orchestrator, err := NewOrchestratorService(
 			aiProvider,
@@ -73,7 +73,7 @@ Plan: Neurosurgery consult, biopsy, oncology evaluation, corticosteroids`
 
 		// The result should indicate that execution is in progress (not final answer)
 		assert.True(t, result.Success)
-		
+
 		// For EXECUTE type, we should have an execution plan ID
 		if result.ExecutionPlanID != "" {
 			t.Logf("  Execution Plan ID: %s", result.ExecutionPlanID)
@@ -89,38 +89,38 @@ Plan: Neurosurgery consult, biopsy, oncology evaluation, corticosteroids`
 				Content:   "MEDICAL ANALYSIS:\n• Diagnosed condition: Brain mass (2.5cm left frontal)\n• Critical vitals: Hypertensive (140/90), papilledema present\n• Key symptoms: Progressive headaches, vision changes, neurological deficits\n• Extracted medications: Corticosteroids prescribed\n• Urgency level: High - immediate intervention required",
 				Timestamp: time.Now(),
 				Metadata: map[string]interface{}{
-					"extracted_terms": []string{"glioblastoma", "metastatic disease", "papilledema", "frontal lobe"},
+					"extracted_terms":      []string{"glioblastoma", "metastatic disease", "papilledema", "frontal lobe"},
 					"vital_signs_abnormal": true,
-					"urgency_score": 9,
+					"urgency_score":        9,
 				},
 			}
-			
+
 			// Store agent result (this would happen through messaging in real system)
 			err = executionPlanRepo.StoreAgentResult(ctx, medicalResult)
 			require.NoError(t, err)
 			t.Logf("  ✅ Medical text processor completed: %d chars", len(medicalResult.Content))
 
-			// Agent 2: Clinical data analyzer completes  
+			// Agent 2: Clinical data analyzer completes
 			clinicalResult := &executionDomain.AgentResult{
 				AgentID:   "clinical-data-analyzer",
 				Status:    executionDomain.AgentResultStatusSuccess,
 				Content:   "CLINICAL DATA ANALYSIS:\n• Imaging interpretation: 2.5cm enhancing mass suggests high-grade glioma\n• Lab analysis: Normal CBC/CMP rules out systemic disease\n• Neurological findings: Papilledema + weakness = increased intracranial pressure\n• Differential diagnosis: 70% primary glioblastoma, 25% metastatic disease, 5% other\n• Staging considerations: Need tissue diagnosis and systemic workup",
 				Timestamp: time.Now().Add(5 * time.Second),
 				Metadata: map[string]interface{}{
-					"probability_glioblastoma": 0.70,
-					"probability_metastatic": 0.25,
-					"icp_present": true,
+					"probability_glioblastoma":  0.70,
+					"probability_metastatic":    0.25,
+					"icp_present":               true,
 					"tissue_diagnosis_required": true,
 				},
 			}
-			
+
 			err = executionPlanRepo.StoreAgentResult(ctx, clinicalResult)
 			require.NoError(t, err)
 			t.Logf("  ✅ Clinical data analyzer completed: %d chars", len(clinicalResult.Content))
 
 			// Now test the result synthesis - this is the KEY missing piece
 			t.Logf("\n🧠 SYNTHESIZING MULTI-AGENT RESULTS:")
-			
+
 			synthesizedResult, err := orchestrator.ProcessWithSynthesis(ctx, result.ExecutionPlanID, userInput, userID)
 			require.NoError(t, err)
 			require.NotEmpty(t, synthesizedResult)
@@ -131,16 +131,16 @@ Plan: Neurosurgery consult, biopsy, oncology evaluation, corticosteroids`
 
 			// Assertions: Verify the synthesis quality
 			assert.Greater(t, len(synthesizedResult), 500, "Synthesized result should be comprehensive")
-			
+
 			// Should contain insights from all agents
 			assert.Contains(t, synthesizedResult, "glioblastoma", "Should include medical analysis")
 			assert.Contains(t, synthesizedResult, "treatment", "Should include treatment planning")
 
 			// Should be structured for clinical use
-			assert.True(t, 
-				strings.Contains(synthesizedResult, "Assessment") || 
-				strings.Contains(synthesizedResult, "Summary") ||
-				strings.Contains(synthesizedResult, "Analysis"),
+			assert.True(t,
+				strings.Contains(synthesizedResult, "Assessment") ||
+					strings.Contains(synthesizedResult, "Summary") ||
+					strings.Contains(synthesizedResult, "Analysis"),
 				"Should have clinical structure")
 
 			t.Logf("\n✅ MULTI-AGENT HEALTHCARE SCENARIO COMPLETE!")

@@ -244,6 +244,13 @@ type MockPlanningResultRepository struct {
 	StoredResults []*planningDomain.PlanningResult
 }
 
+// NewMockPlanningResultRepository creates a new mock planning result repository
+func NewMockPlanningResultRepository() *MockPlanningResultRepository {
+	return &MockPlanningResultRepository{
+		StoredResults: make([]*planningDomain.PlanningResult, 0),
+	}
+}
+
 func (m *MockPlanningResultRepository) Store(ctx context.Context, result *planningDomain.PlanningResult) error {
 	m.StoreCalled = true
 	m.StoredResult = result
@@ -293,5 +300,10 @@ func (m *MockPlanningResultRepository) LinkToExecutionPlan(ctx context.Context, 
 	m.LinkToExecutionPlanCalled = true
 	m.LinkedPlanningResultID = planningResultID
 	m.LinkedExecutionPlanID = executionPlanID
+	return nil
+}
+
+func (m *MockPlanningResultRepository) LinkToConversation(ctx context.Context, planningResultID, conversationID string) error {
+	// Add tracking fields if needed for specific tests
 	return nil
 }

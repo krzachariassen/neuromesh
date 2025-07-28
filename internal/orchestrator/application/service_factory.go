@@ -104,12 +104,16 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	// Create result synthesizer for intelligent result combination
 	resultSynthesizer := executionApp.NewAIResultSynthesizer(sf.aiProvider, executionPlanRepo)
 
+	// Create execution coordinator for async execution coordination (Phase 3)
+	executionCoordinator := executionApp.NewExecutionCoordinator(executionPlanRepo, resultSynthesizer)
+
 	// Wire everything together using new unified planning approach
 	return NewOrchestratorService(
 		aiPlanningEngine,
 		graphExplorer,
 		aiExecutionEngine,
 		sf.conversationService,
+		executionCoordinator, // NEW: Async execution coordination
 		resultSynthesizer,
 		executionPlanRepo,
 		sf.logger,

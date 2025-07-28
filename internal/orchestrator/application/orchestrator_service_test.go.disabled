@@ -75,6 +75,7 @@ func TestOrchestratorService_NewPlanningApproach(t *testing.T) {
 			mockGraphExplorer,
 			mockExecutionEngine,
 			nil, // conversation service
+			nil, // executionCoordinator - NEW Phase 3 parameter
 			nil, // result synthesizer
 			nil, // repository
 			logger,
