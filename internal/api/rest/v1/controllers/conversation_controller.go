@@ -87,22 +87,20 @@ func (c *ConversationController) GetConversationGraph(w http.ResponseWriter, r *
 	responses.Success(w, apiGraphData)
 }
 
-// extractConversationID extracts conversation ID from /api/v1/conversations/{id}
+// extractConversationID extracts conversation ID from URL path
+// Works for both /api/v1/conversations/{id} and /api/v1/conversations/{id}/graph
 func (c *ConversationController) extractConversationID(path string) string {
 	parts := strings.Split(path, "/")
+	// Path format: ["", "api", "v1", "conversations", "{id}", ...optional]
 	if len(parts) >= 5 && parts[4] != "" {
 		return parts[4]
 	}
 	return ""
 }
 
-// extractConversationIDFromGraphPath extracts conversation ID from /api/v1/conversations/{id}/graph
+// extractConversationIDFromGraphPath is an alias for consistency
 func (c *ConversationController) extractConversationIDFromGraphPath(path string) string {
-	parts := strings.Split(path, "/")
-	if len(parts) >= 6 && parts[4] != "" && parts[5] == "graph" {
-		return parts[4]
-	}
-	return ""
+	return c.extractConversationID(path)
 }
 
 // conversationToResponse converts a domain conversation to API response format

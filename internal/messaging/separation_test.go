@@ -54,6 +54,19 @@ func (m *MockMessageBus) PrepareAgentQueue(ctx context.Context, agentID string) 
 	return nil
 }
 
+// Domain event methods (no-op for mock)
+func (m *MockMessageBus) PublishDomainEvent(ctx context.Context, eventType string, event interface{}) error {
+	return nil
+}
+
+func (m *MockMessageBus) SubscribeToDomainEvents(ctx context.Context, subscriberID, eventPattern string) (<-chan *DomainEvent, error) {
+	return make(<-chan *DomainEvent), nil
+}
+
+func (m *MockMessageBus) Close() error {
+	return nil
+}
+
 // TestPrepareAgentQueueSeparation tests that queue preparation and subscription are separate concerns
 func TestPrepareAgentQueueSeparation(t *testing.T) {
 	mockBus := &MockMessageBus{}

@@ -91,37 +91,40 @@ func (r *Router) registerRoutes() {
 	r.registerUtilityRoutes()
 }
 
-// registerRESTRoutes registers clean REST API routes
+// registerRESTRoutes registers clean REST API routes for conversation data
 func (r *Router) registerRESTRoutes() {
-	// Conversation routes
+	// Conversation data endpoints (for UI graph/history display)
 	r.mux.HandleFunc("/api/v1/conversations/", func(w http.ResponseWriter, req *http.Request) {
-		// Parse the path to route to appropriate controller method
-		path := req.URL.Path
-
-		// Handle: GET /api/v1/conversations/{id}/graph
-		if req.Method == http.MethodGet && len(path) > 23 {
-			// Check if path ends with "/graph"
-			if len(path) > 6 && path[len(path)-6:] == "/graph" {
-				r.conversationController.GetConversationGraph(w, req)
-				return
-			}
-
-			// Handle: GET /api/v1/conversations/{id}
-			r.conversationController.GetConversation(w, req)
+		// Only support GET requests for conversation data
+		if req.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// TODO: Add more REST endpoints as needed
-		// - POST /api/v1/conversations (create conversation)
-		// - PUT /api/v1/conversations/{id} (update conversation)
-		// - DELETE /api/v1/conversations/{id} (delete conversation)
-		// - GET /api/v1/conversations/{id}/messages (get messages)
-		// - POST /api/v1/conversations/{id}/messages (add message)
+		path := req.URL.Path
 
-		http.NotFound(w, req)
+		// Handle: GET /api/v1/conversations/{id}/graph
+		if len(path) > 6 && path[len(path)-6:] == "/graph" {
+			r.conversationController.GetConversationGraph(w, req)
+			return
+		}
+
+		// Handle: GET /api/v1/conversations/{id}/execution-plans
+		if len(path) > 16 && path[len(path)-16:] == "/execution-plans" {
+			// TODO: Implement execution plans endpoint
+			http.Error(w, "Execution plans endpoint not implemented yet", http.StatusNotImplemented)
+			return
+		}
+
+		// Handle: GET /api/v1/conversations/{id}
+		r.conversationController.GetConversation(w, req)
 	})
 
-	r.logger.Info("REST API v1 routes registered", "prefix", "/api/v1/conversations")
+	r.logger.Info("REST API v1 routes registered", "endpoints", []string{
+		"/api/v1/conversations/{id}",
+		"/api/v1/conversations/{id}/graph",
+		"/api/v1/conversations/{id}/execution-plans (TODO)",
+	})
 }
 
 // registerBFFRoutes registers Backend for Frontend routes

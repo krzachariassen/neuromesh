@@ -49,6 +49,7 @@ type Conversation struct {
 	ID               string                `json:"id"`
 	SessionID        string                `json:"session_id"`
 	UserID           string                `json:"user_id"`
+	ProjectID        string                `json:"project_id"`
 	Status           ConversationStatus    `json:"status"`
 	Messages         []ConversationMessage `json:"messages"`
 	ExecutionPlanIDs []string              `json:"execution_plan_ids"`
@@ -57,7 +58,7 @@ type Conversation struct {
 }
 
 // NewConversation creates a new conversation with validation
-func NewConversation(id, sessionID, userID string) (*Conversation, error) {
+func NewConversation(id, sessionID, userID, projectID string) (*Conversation, error) {
 	if id == "" {
 		return nil, ConversationValidationError{Field: "id", Message: "conversation ID cannot be empty"}
 	}
@@ -70,12 +71,17 @@ func NewConversation(id, sessionID, userID string) (*Conversation, error) {
 		return nil, ConversationValidationError{Field: "user_id", Message: "user ID cannot be empty"}
 	}
 
+	if projectID == "" {
+		return nil, ConversationValidationError{Field: "project_id", Message: "project ID cannot be empty"}
+	}
+
 	now := time.Now().UTC()
 
 	conversation := &Conversation{
 		ID:               id,
 		SessionID:        sessionID,
 		UserID:           userID,
+		ProjectID:        projectID,
 		Status:           ConversationStatusActive,
 		Messages:         make([]ConversationMessage, 0),
 		ExecutionPlanIDs: make([]string, 0),

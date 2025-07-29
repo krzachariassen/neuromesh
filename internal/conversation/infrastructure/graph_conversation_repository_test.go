@@ -45,7 +45,7 @@ func TestGraphConversationRepository_ConversationSchema(t *testing.T) {
 		require.NoError(t, err, "Failed to ensure conversation schema")
 
 		// Create test conversation
-		conversation, err := domain.NewConversation("conv-123", "session-456", "user-789")
+		conversation, err := domain.NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		require.NoError(t, err, "Failed to create conversation")
 
 		// Now this should succeed
@@ -74,7 +74,7 @@ func TestGraphConversationRepository_ConversationSchema(t *testing.T) {
 		require.NoError(t, err, "Failed to ensure message schema")
 
 		// Create test conversation
-		conversation, err := domain.NewConversation("conv-123", "session-456", "user-789")
+		conversation, err := domain.NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		require.NoError(t, err, "Failed to create conversation")
 		err = repo.CreateConversation(ctx, conversation)
 		require.NoError(t, err, "Failed to create conversation")
@@ -111,7 +111,7 @@ func TestGraphConversationRepository_ConversationSchema(t *testing.T) {
 		require.NoError(t, err, "Failed to ensure conversation schema")
 
 		// Create test conversation
-		conversation, err := domain.NewConversation("conv-123", "session-456", "user-789")
+		conversation, err := domain.NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		require.NoError(t, err, "Failed to create conversation")
 		err = repo.CreateConversation(ctx, conversation)
 		require.NoError(t, err, "Failed to create conversation")
@@ -134,12 +134,12 @@ func TestGraphConversationRepository_ConversationSchema(t *testing.T) {
 		require.NoError(t, err, "Failed to ensure conversation schema")
 
 		// Create test conversations
-		conv1, err := domain.NewConversation("conv-1", "session-456", "user-789")
+		conv1, err := domain.NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		require.NoError(t, err, "Failed to create conversation 1")
 		err = repo.CreateConversation(ctx, conv1)
 		require.NoError(t, err, "Failed to create conversation 1")
 
-		conv2, err := domain.NewConversation("conv-2", "session-456", "user-789")
+		conv2, err := domain.NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		require.NoError(t, err, "Failed to create conversation 2")
 		err = repo.CreateConversation(ctx, conv2)
 		require.NoError(t, err, "Failed to create conversation 2")
@@ -172,7 +172,7 @@ func TestGraphConversationRepository_ConversationSchema(t *testing.T) {
 		require.NoError(t, err, "Failed to ensure message schema")
 
 		// Create test conversation
-		conversation, err := domain.NewConversation("conv-123", "session-456", "user-789")
+		conversation, err := domain.NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		require.NoError(t, err, "Failed to create conversation")
 		err = repo.CreateConversation(ctx, conversation)
 		require.NoError(t, err, "Failed to create conversation")

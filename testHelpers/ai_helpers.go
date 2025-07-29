@@ -6,6 +6,7 @@ import (
 
 	aiInfrastructure "neuromesh/internal/ai/infrastructure"
 	"neuromesh/internal/logging"
+	planningDomain "neuromesh/internal/planning/domain"
 )
 
 // SetupRealAIProvider creates a real OpenAI provider for testing
@@ -26,4 +27,25 @@ func SetupRealAIProvider(t *testing.T) *aiInfrastructure.OpenAIProvider {
 	provider := aiInfrastructure.NewOpenAIProvider(config, logger)
 
 	return provider
+}
+
+// NewTestLogger creates a logger suitable for testing
+func NewTestLogger() logging.Logger {
+	return logging.NewNoOpLogger()
+}
+
+// CreateTestPlanningResult creates a test planning result for TDD tests
+func CreateTestPlanningResult() *planningDomain.PlanningResult {
+	return &planningDomain.PlanningResult{
+		ID:              "test-plan-id-123",
+		RequestID:       "test-request-id-456",
+		Type:            planningDomain.PlanningTypeExecute,
+		AvailableAgents: []string{"text-processor"},
+		RequiredAgents:  []string{"text-processor"},
+		ExecutionPlanID: "test-execution-plan-789",
+		Intent:          "test intent",
+		Category:        "text processing",
+		Confidence:      95,
+		Reasoning:       "TDD test planning result",
+	}
 }

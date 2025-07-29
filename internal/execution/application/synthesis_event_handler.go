@@ -2,25 +2,18 @@ package application
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"time"
 
 	"neuromesh/internal/execution/domain"
 	"neuromesh/internal/messaging"
 	planningDomain "neuromesh/internal/planning/domain"
 )
 
-// AgentCompletedEvent represents an event when an agent completes execution
-type AgentCompletedEvent struct {
-	PlanID  string `json:"plan_id"`
-	StepID  string `json:"step_id"`
-	AgentID string `json:"agent_id"`
-}
-
-// SynthesisEventHandler handles agent completion events and triggers synthesis
+// SynthesisEventHandler handles agent completion events and triggers synthesis using clean domain events
 type SynthesisEventHandler struct {
 	coordinator *ExecutionCoordinator
-	messageBus  messaging.AIMessageBus
+	messageBus  messaging.MessageBus  // Use MessageBus with domain events, not EventRouter
 	repository  planningDomain.ExecutionPlanRepository
 	synthesizer domain.ResultSynthesizer
 }
@@ -28,7 +21,7 @@ type SynthesisEventHandler struct {
 // NewSynthesisEventHandler creates a new synthesis event handler
 func NewSynthesisEventHandler(
 	coordinator *ExecutionCoordinator,
-	messageBus messaging.AIMessageBus,
+	messageBus messaging.MessageBus,
 	repository planningDomain.ExecutionPlanRepository,
 	synthesizer domain.ResultSynthesizer,
 ) *SynthesisEventHandler {
@@ -41,7 +34,7 @@ func NewSynthesisEventHandler(
 }
 
 // HandleAgentCompleted handles agent completion events
-func (h *SynthesisEventHandler) HandleAgentCompleted(ctx context.Context, event *AgentCompletedEvent) error {
+func (h *SynthesisEventHandler) HandleAgentCompleted(ctx context.Context, event *messaging.AgentCompletedEvent) error {
 	// Validate dependencies
 	if h.coordinator == nil {
 		return fmt.Errorf("coordinator is nil")
@@ -67,17 +60,17 @@ func (h *SynthesisEventHandler) HandleAgentCompleted(ctx context.Context, event 
 	return nil
 }
 
-// StartEventListener starts listening for agent completion events
+// StartEventListener starts listening for agent completion events using clean domain events
 func (h *SynthesisEventHandler) StartEventListener(ctx context.Context) error {
 	// Validate dependencies
 	if h.messageBus == nil {
 		return fmt.Errorf("message bus is nil")
 	}
 
-	// Subscribe to agent completion events
-	eventChan, err := h.messageBus.Subscribe(ctx, "synthesis-coordination")
+	// Subscribe to agent completion domain events using clean interface
+	eventChan, err := h.messageBus.SubscribeToDomainEvents(ctx, "synthesis-coordinator", "execution.agent.completed")
 	if err != nil {
-		return fmt.Errorf("failed to subscribe to events: %w", err)
+		return fmt.Errorf("failed to subscribe to agent completion events: %w", err)
 	}
 
 	// Process events asynchronously
@@ -86,21 +79,20 @@ func (h *SynthesisEventHandler) StartEventListener(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return
-			case msg := <-eventChan:
-				if msg.MessageType == messaging.MessageTypeAgentCompleted {
-					var event AgentCompletedEvent
-					if err := json.Unmarshal([]byte(msg.Content), &event); err != nil {
-						// Log error but continue processing
-						fmt.Printf("Warning: Failed to unmarshal agent completion event: %v\n", err)
-						continue
-					}
+			case domainEvent := <-eventChan:
+				// Unmarshal domain event data
+				var event messaging.AgentCompletedEvent
+				if err := domainEvent.UnmarshalEventData(&event); err != nil {
+					// Log error but continue processing
+					fmt.Printf("Warning: Failed to unmarshal agent completion event: %v\n", err)
+					continue
+				}
 
-					// Handle the event
-					if err := h.HandleAgentCompleted(ctx, &event); err != nil {
-						// Log error but continue processing
-						fmt.Printf("Warning: Failed to handle agent completion event: %v\n", err)
-						continue
-					}
+				// Handle the event
+				if err := h.HandleAgentCompleted(ctx, &event); err != nil {
+					// Log error but continue processing
+					fmt.Printf("Warning: Failed to handle agent completion event: %v\n", err)
+					continue
 				}
 			}
 		}
@@ -109,39 +101,27 @@ func (h *SynthesisEventHandler) StartEventListener(ctx context.Context) error {
 	return nil
 }
 
-// PublishAgentCompletedEvent publishes an agent completion event to the message bus
-func PublishAgentCompletedEvent(ctx context.Context, messageBus messaging.AIMessageBus, planID, stepID, agentID string) error {
+// PublishAgentCompletedEvent publishes an agent completion event using clean domain events
+func PublishAgentCompletedEvent(ctx context.Context, messageBus messaging.MessageBus, planID, stepID, agentID string) error {
 	// Validate dependencies
 	if messageBus == nil {
 		return fmt.Errorf("messageBus is nil")
 	}
 
-	// Create the event
-	event := &AgentCompletedEvent{
-		PlanID:  planID,
-		StepID:  stepID,
-		AgentID: agentID,
+	// Create the domain event
+	event := &messaging.AgentCompletedEvent{
+		PlanID:    planID,
+		StepID:    stepID,
+		AgentID:   agentID,
+		Status:    "completed",
+		Timestamp: time.Now().UTC(),
 	}
 
-	// Marshal to JSON
-	eventData, err := json.Marshal(event)
+	// Publish using clean domain event interface - no infrastructure leakage
+	err := messageBus.PublishDomainEvent(ctx, "execution.agent.completed", event)
 	if err != nil {
-		return fmt.Errorf("failed to marshal agent completed event: %w", err)
+		return fmt.Errorf("failed to publish agent completed event: %w", err)
 	}
 
-	// Create message
-	msg := &messaging.UserToAIMessage{
-		UserID:        "synthesis-coordination",
-		Content:       string(eventData),
-		CorrelationID: fmt.Sprintf("synthesis-%s", planID),
-		Context: map[string]interface{}{
-			"event_type": "agent.completed",
-			"plan_id":    planID,
-			"step_id":    stepID,
-			"agent_id":   agentID,
-		},
-	}
-
-	// Send the message
-	return messageBus.SendUserToAI(ctx, msg)
+	return nil
 }

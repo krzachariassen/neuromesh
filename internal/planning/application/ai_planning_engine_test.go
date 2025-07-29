@@ -142,13 +142,13 @@ func TestAIPlanningEngine_ParseExecutionPlanJSON(t *testing.T) {
 			"steps": [
 				{
 					"step_number": 1,
-					"agent_name": "text-processor",
+					"agent_id": "text-processor",
 					"action_description": "Count words in the provided text",
 					"step_name": "Word Count"
 				},
 				{
 					"step_number": 2,
-					"agent_name": "text-processor",
+					"agent_id": "text-processor",
 					"action_description": "Analyze text structure and formatting",
 					"step_name": "Text Analysis"
 				}
@@ -177,7 +177,7 @@ func TestAIPlanningEngine_ParseExecutionPlanJSON(t *testing.T) {
 			"steps": [
 				{
 					"step_number": 1,
-					"agent_name": "text-processor",
+					"agent_id": "text-processor",
 					"action_description": "Process the text for word counting"
 				}
 			]
@@ -210,6 +210,6 @@ func TestAIPlanningEngine_ParseExecutionPlanJSON(t *testing.T) {
 
 		_, err := engine.parseExecutionPlanJSON(jsonStr)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "agent_name cannot be empty")
+		assert.Contains(t, err.Error(), "agent_id cannot be empty")
 	})
 }

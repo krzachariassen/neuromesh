@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"neuromesh/internal/messaging"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +20,7 @@ func TestSynthesisEventHandler_BasicFunctionality(t *testing.T) {
 	t.Run("HandleAgentCompleted with nil coordinator returns error", func(t *testing.T) {
 		handler := NewSynthesisEventHandler(nil, nil, nil, nil)
 
-		event := &AgentCompletedEvent{
+		event := &messaging.AgentCompletedEvent{
 			PlanID:  "plan-1",
 			StepID:  "step-1",
 			AgentID: "agent-1",
@@ -36,7 +38,7 @@ func TestSynthesisEventHandler_BasicFunctionality(t *testing.T) {
 	})
 
 	t.Run("can create AgentCompletedEvent", func(t *testing.T) {
-		event := &AgentCompletedEvent{
+		event := &messaging.AgentCompletedEvent{
 			PlanID:  "plan-1",
 			StepID:  "step-1",
 			AgentID: "agent-1",

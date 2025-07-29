@@ -2,6 +2,15 @@ package domain
 
 import "context"
 
+// ConversationContextData represents conversation context data retrieved from graph relationships
+type ConversationContextData struct {
+	ConversationID string
+	ProjectID      string
+	UserID         string
+	SessionID      string
+	ProjectName    string
+}
+
 // ConversationRepository defines the interface for conversation persistence operations
 type ConversationRepository interface {
 	// Schema management
@@ -31,4 +40,7 @@ type ConversationRepository interface {
 	FindActiveConversations(ctx context.Context) ([]*Conversation, error)
 	FindConversationsByStatus(ctx context.Context, status ConversationStatus) ([]*Conversation, error)
 	GetAllConversations(ctx context.Context) ([]*Conversation, error)
+
+	// Graph traversal operations for context
+	GetConversationContext(ctx context.Context, conversationID string) (*ConversationContextData, error)
 }

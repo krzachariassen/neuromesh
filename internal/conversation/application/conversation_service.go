@@ -7,14 +7,26 @@ import (
 	"neuromesh/internal/conversation/domain"
 )
 
+// ConversationContext represents complete conversation context derived from graph relationships
+type ConversationContext struct {
+	ConversationID string
+	ProjectID      string
+	UserID         string
+	SessionID      string
+	ProjectName    string
+}
+
 // ConversationService defines the application service interface for conversation management
 type ConversationService interface {
 	// Conversation management
-	CreateConversation(ctx context.Context, id, sessionID, userID string) (*domain.Conversation, error)
+	CreateConversation(ctx context.Context, id, sessionID, userID, projectID string) (*domain.Conversation, error)
 	GetConversation(ctx context.Context, conversationID string) (*domain.Conversation, error)
 	GetConversationWithMessages(ctx context.Context, conversationID string) (*domain.Conversation, error)
 	UpdateConversationStatus(ctx context.Context, conversationID string, status domain.ConversationStatus) error
 	DeleteConversation(ctx context.Context, conversationID string) error
+
+	// Graph-native context operations
+	GetConversationContext(ctx context.Context, conversationID string) (*ConversationContext, error)
 
 	// Message management
 	AddMessage(ctx context.Context, conversationID, messageID string, role domain.MessageRole, content string, metadata map[string]interface{}) error
@@ -51,8 +63,8 @@ func NewConversationService(repo domain.ConversationRepository) ConversationServ
 }
 
 // CreateConversation creates a new conversation
-func (s *ConversationServiceImpl) CreateConversation(ctx context.Context, id, sessionID, userID string) (*domain.Conversation, error) {
-	conversation, err := domain.NewConversation(id, sessionID, userID)
+func (s *ConversationServiceImpl) CreateConversation(ctx context.Context, id, sessionID, userID, projectID string) (*domain.Conversation, error) {
+	conversation, err := domain.NewConversation(id, sessionID, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create conversation domain object: %w", err)
 	}
@@ -262,4 +274,23 @@ func (s *ConversationServiceImpl) EnsureSchema(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// GetConversationContext retrieves complete conversation context using graph relationships
+// REFACTOR: Real implementation using repository graph traversal
+func (s *ConversationServiceImpl) GetConversationContext(ctx context.Context, conversationID string) (*ConversationContext, error) {
+	// Use repository to get context from graph relationships
+	contextData, err := s.repo.GetConversationContext(ctx, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get conversation context: %w", err)
+	}
+
+	// Convert domain context data to application context
+	return &ConversationContext{
+		ConversationID: contextData.ConversationID,
+		ProjectID:      contextData.ProjectID,
+		UserID:         contextData.UserID,
+		SessionID:      contextData.SessionID,
+		ProjectName:    contextData.ProjectName,
+	}, nil
 }

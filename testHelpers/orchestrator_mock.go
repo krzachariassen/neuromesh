@@ -25,6 +25,11 @@ func (m *MockGraphExplorer) GetAgentContext(ctx context.Context) (string, error)
 	return args.String(0), args.Error(1)
 }
 
+// SetGetAgentContextResult sets up mock result for GetAgentContext
+func (m *MockGraphExplorer) SetGetAgentContextResult(result string, err error) {
+	m.On("GetAgentContext", mock.Anything).Return(result, err)
+}
+
 // MockAIPlanningEngine provides a testify-based mock for AI planning engine
 type MockAIPlanningEngine struct {
 	mock.Mock
@@ -39,6 +44,11 @@ func NewMockAIPlanningEngine() *MockAIPlanningEngine {
 func (m *MockAIPlanningEngine) CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string) (*planningDomain.PlanningResult, error) {
 	args := m.Called(ctx, userInput, userID, agentContext, requestID)
 	return args.Get(0).(*planningDomain.PlanningResult), args.Error(1)
+}
+
+// SetCreateExecutionPlanResult sets up mock result for CreateExecutionPlan
+func (m *MockAIPlanningEngine) SetCreateExecutionPlanResult(result *planningDomain.PlanningResult, err error) {
+	m.On("CreateExecutionPlan", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(result, err)
 }
 
 // LinkPlanningResultToConversation mocks the LinkPlanningResultToConversation method

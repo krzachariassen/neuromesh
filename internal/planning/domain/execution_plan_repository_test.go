@@ -99,6 +99,25 @@ func (m *MockExecutionPlanRepository) GetAgentResultsByExecutionPlan(ctx context
 	return args.Get(0).([]*executionDomain.AgentResult), args.Error(1)
 }
 
+// Missing methods from the interface
+func (m *MockExecutionPlanRepository) GetPlanIDByCorrelationID(ctx context.Context, correlationID string) (string, error) {
+	args := m.Called(ctx, correlationID)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error {
+	args := m.Called(ctx, result)
+	return args.Error(0)
+}
+
+func (m *MockExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error) {
+	args := m.Called(ctx, planID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*executionDomain.SynthesisResult), args.Error(1)
+}
+
 func TestExecutionPlanRepository_Interface(t *testing.T) {
 	// This test ensures our mock implements the interface correctly
 	var repo ExecutionPlanRepository = &MockExecutionPlanRepository{}

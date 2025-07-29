@@ -26,8 +26,9 @@ type RabbitMQMessageBus struct {
 	maxReconnects  int
 
 	// Exchanges and queues
-	agentExchange string
-	dlxExchange   string
+	agentExchange  string
+	dlxExchange    string
+	eventsExchange string
 
 	// Consumer tag tracking for proper cleanup
 	consumerTags map[string]string // participantID -> consumerTag
@@ -45,13 +46,14 @@ type RabbitMQConfig struct {
 // NewRabbitMQMessageBus creates a new RabbitMQ-based message bus
 func NewRabbitMQMessageBus(config RabbitMQConfig, logger logging.Logger) *RabbitMQMessageBus {
 	return &RabbitMQMessageBus{
-		url:            config.URL,
-		logger:         logger,
-		reconnectDelay: config.ReconnectDelay,
-		maxReconnects:  config.MaxReconnects,
-		agentExchange:  "agent.messages",
-		dlxExchange:    "agent.messages.dlx",
-		consumerTags:   make(map[string]string),
+		url:             config.URL,
+		logger:          logger,
+		reconnectDelay:  config.ReconnectDelay,
+		maxReconnects:   config.MaxReconnects,
+		agentExchange:   "agent.messages",
+		dlxExchange:     "agent.messages.dlx",
+		eventsExchange:  "domain.events",
+		consumerTags:    make(map[string]string),
 	}
 }
 
@@ -105,6 +107,20 @@ func (rmq *RabbitMQMessageBus) setupTopology() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to declare DLX exchange: %w", err)
+	}
+
+	// Declare domain events exchange
+	err = rmq.channel.ExchangeDeclare(
+		rmq.eventsExchange, // name
+		"topic",            // type - topic for event pattern matching
+		true,               // durable
+		false,              // auto-deleted
+		false,              // internal
+		false,              // no-wait
+		nil,                // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("failed to declare events exchange: %w", err)
 	}
 
 	rmq.logger.Info("✅ RabbitMQ topology setup complete")
@@ -382,4 +398,150 @@ func (rmq *RabbitMQMessageBus) HealthCheck() error {
 		return fmt.Errorf("RabbitMQ channel not available")
 	}
 	return nil
+}
+
+// PublishDomainEvent publishes a domain event to the events exchange
+func (rmq *RabbitMQMessageBus) PublishDomainEvent(ctx context.Context, eventType string, data interface{}) error {
+	if rmq.channel == nil {
+		return fmt.Errorf("RabbitMQ channel not available")
+	}
+
+	// Marshal the event data
+	eventData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event data: %w", err)
+	}
+
+	// Create the domain event
+	eventID := uuid.New().String()
+	event := DomainEvent{
+		EventType: eventType,
+		EventData: json.RawMessage(eventData),
+		Metadata: map[string]interface{}{
+			"id": eventID,
+		},
+		Timestamp: time.Now(),
+	}
+
+	// Marshal the complete event
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal domain event: %w", err)
+	}
+
+	// Publish to the events exchange using event type as routing key
+	err = rmq.channel.PublishWithContext(
+		ctx,
+		rmq.eventsExchange, // exchange
+		eventType,          // routing key - allows pattern matching
+		false,              // mandatory
+		false,              // immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        eventBytes,
+			MessageId:   eventID,
+			Timestamp:   event.Timestamp,
+		},
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to publish domain event: %w", err)
+	}
+
+	rmq.logger.Info("📤 Published domain event", "event_type", eventType, "event_id", eventID)
+	return nil
+}
+
+// SubscribeToDomainEvents subscribes to domain events matching the pattern
+func (rmq *RabbitMQMessageBus) SubscribeToDomainEvents(ctx context.Context, subscriberID, eventPattern string) (<-chan *DomainEvent, error) {
+	if rmq.channel == nil {
+		return nil, fmt.Errorf("RabbitMQ channel not available")
+	}
+
+	// Create a unique queue for this subscriber
+	queueName := fmt.Sprintf("events.%s.%s", subscriberID, uuid.New().String()[:8])
+	
+	queue, err := rmq.channel.QueueDeclare(
+		queueName, // name
+		false,     // durable - temporary queue
+		true,      // delete when unused
+		true,      // exclusive
+		false,     // no-wait
+		nil,       // arguments
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare event queue: %w", err)
+	}
+
+	// Bind queue to events exchange with the pattern
+	err = rmq.channel.QueueBind(
+		queue.Name,         // queue name
+		eventPattern,       // routing key pattern
+		rmq.eventsExchange, // exchange
+		false,              // no-wait
+		nil,                // arguments
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind event queue: %w", err)
+	}
+
+	// Start consuming
+	msgs, err := rmq.channel.Consume(
+		queue.Name,  // queue
+		subscriberID, // consumer tag
+		true,        // auto-ack for events
+		true,        // exclusive
+		false,       // no-local
+		false,       // no-wait
+		nil,         // args
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to consume events: %w", err)
+	}
+
+	// Track consumer for cleanup
+	rmq.mu.Lock()
+	rmq.consumerTags[subscriberID] = subscriberID
+	rmq.mu.Unlock()
+
+	// Convert delivery channel to domain event channel
+	eventsChan := make(chan *DomainEvent, 10)
+	
+	go func() {
+		defer close(eventsChan)
+		defer func() {
+			rmq.mu.Lock()
+			delete(rmq.consumerTags, subscriberID)
+			rmq.mu.Unlock()
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				rmq.logger.Info("🔌 Domain event subscription cancelled", "subscriber", subscriberID)
+				return
+			case delivery, ok := <-msgs:
+				if !ok {
+					rmq.logger.Info("🔌 Domain event delivery channel closed", "subscriber", subscriberID)
+					return
+				}
+
+				var event DomainEvent
+				if err := json.Unmarshal(delivery.Body, &event); err != nil {
+					rmq.logger.Error("Failed to unmarshal domain event", err, "subscriber", subscriberID)
+					continue
+				}
+
+				select {
+				case eventsChan <- &event:
+					rmq.logger.Info("📨 Delivered domain event", "event_type", event.EventType, "subscriber", subscriberID)
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	rmq.logger.Info("🔔 Subscribed to domain events", "subscriber", subscriberID, "pattern", eventPattern)
+	return eventsChan, nil
 }

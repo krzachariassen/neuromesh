@@ -2,7 +2,10 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +20,10 @@ type MemoryMessageBus struct {
 	subscribers   map[string]chan *Message
 	conversations map[string]*ConversationContext
 	history       map[string][]*Message
+	
+	// Domain event support
+	eventSubscribers map[string]chan *DomainEvent
+	
 	mutex         sync.RWMutex
 	logger        logging.Logger
 }
@@ -24,10 +31,11 @@ type MemoryMessageBus struct {
 // NewMemoryMessageBus creates a new in-memory message bus
 func NewMemoryMessageBus(logger logging.Logger) *MemoryMessageBus {
 	return &MemoryMessageBus{
-		subscribers:   make(map[string]chan *Message),
-		conversations: make(map[string]*ConversationContext),
-		history:       make(map[string][]*Message),
-		logger:        logger,
+		subscribers:      make(map[string]chan *Message),
+		conversations:    make(map[string]*ConversationContext),
+		history:          make(map[string][]*Message),
+		eventSubscribers: make(map[string]chan *DomainEvent),
+		logger:           logger,
 	}
 }
 
@@ -155,4 +163,102 @@ func (mb *MemoryMessageBus) CreateConversation(ctx context.Context, participants
 	mb.mutex.Unlock()
 
 	return conversation, nil
+}
+
+// PublishDomainEvent publishes a domain event with clean interface
+func (mb *MemoryMessageBus) PublishDomainEvent(ctx context.Context, eventType string, event interface{}) error {
+	// Marshal the event data
+	eventData, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event data: %w", err)
+	}
+
+	domainEvent := &DomainEvent{
+		EventType: eventType,
+		EventData: json.RawMessage(eventData),
+		Metadata: map[string]interface{}{
+			"id": uuid.New().String(),
+		},
+		Timestamp: time.Now(),
+	}
+
+	mb.mutex.RLock()
+	defer mb.mutex.RUnlock()
+
+	// Send to all matching subscribers
+	for subscriberKey, eventChan := range mb.eventSubscribers {
+		if mb.eventPatternMatches(subscriberKey, eventType) {
+			select {
+			case eventChan <- domainEvent:
+				mb.logger.Info("📨 Domain event delivered", "event_type", eventType, "subscriber", subscriberKey)
+			default:
+				mb.logger.Warn("Domain event channel full, dropping event", "event_type", eventType, "subscriber", subscriberKey)
+			}
+		}
+	}
+
+	return nil
+}
+
+// SubscribeToDomainEvents subscribes to domain events matching pattern
+func (mb *MemoryMessageBus) SubscribeToDomainEvents(ctx context.Context, subscriberID, eventPattern string) (<-chan *DomainEvent, error) {
+	mb.mutex.Lock()
+	defer mb.mutex.Unlock()
+	
+	// Create buffered channel for events
+	eventChan := make(chan *DomainEvent, 100)
+	
+	// Store subscription with pattern key
+	key := fmt.Sprintf("%s:%s", subscriberID, eventPattern)
+	mb.eventSubscribers[key] = eventChan
+	
+	return eventChan, nil
+}
+
+// eventPatternMatches checks if an event type matches a subscription pattern
+func (mb *MemoryMessageBus) eventPatternMatches(subscriberKey, eventType string) bool {
+	// Extract pattern from subscriber key (format: "subscriberID:pattern")
+	parts := strings.SplitN(subscriberKey, ":", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	
+	pattern := parts[1]
+	
+	// Simple pattern matching - supports exact match and wildcard patterns
+	if pattern == eventType {
+		return true
+	}
+	
+	// Support simple wildcard patterns like "execution.*"
+	if strings.HasSuffix(pattern, "*") {
+		prefix := strings.TrimSuffix(pattern, "*")
+		return strings.HasPrefix(eventType, prefix)
+	}
+	
+	// Support filepath-style pattern matching
+	matched, _ := filepath.Match(pattern, eventType)
+	return matched
+}
+
+// Close cleans up resources
+func (mb *MemoryMessageBus) Close() error {
+	mb.mutex.Lock()
+	defer mb.mutex.Unlock()
+	
+	// Close all subscription channels
+	for _, ch := range mb.subscribers {
+		close(ch)
+	}
+	
+	// Close all event subscription channels
+	for _, ch := range mb.eventSubscribers {
+		close(ch)
+	}
+	
+	// Clear maps
+	mb.subscribers = make(map[string]chan *Message)
+	mb.eventSubscribers = make(map[string]chan *DomainEvent)
+	
+	return nil
 }

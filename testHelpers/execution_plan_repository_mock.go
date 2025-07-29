@@ -289,3 +289,41 @@ func (m *MockExecutionPlanRepository) GetStoredAgentResults() []*executionDomain
 	}
 	return results
 }
+
+// GetPlanIDByCorrelationID finds the execution plan ID for a given correlation ID
+func (m *MockExecutionPlanRepository) GetPlanIDByCorrelationID(ctx context.Context, correlationID string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("GetPlanIDByCorrelationID(%s)", correlationID))
+
+	// In the mock, we'll look through steps to find the plan
+	for planID, steps := range m.steps {
+		for _, step := range steps {
+			if step.ID == correlationID {
+				return planID, nil
+			}
+		}
+	}
+
+	// Not found
+	return "", nil
+}
+
+// StoreSynthesisResult stores a synthesis result (mock implementation)
+func (m *MockExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, fmt.Sprintf("StoreSynthesisResult(%s)", result.PlanID))
+	// In a real mock we might store this, but for now just record the call
+	return nil
+}
+
+// GetSynthesisResultByPlanID retrieves a synthesis result by plan ID (mock implementation)
+func (m *MockExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	m.calls = append(m.calls, fmt.Sprintf("GetSynthesisResultByPlanID(%s)", planID))
+	// Mock returns nil - no synthesis result found
+	return nil, nil
+}

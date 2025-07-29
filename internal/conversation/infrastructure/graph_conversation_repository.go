@@ -8,6 +8,8 @@ import (
 
 	"neuromesh/internal/conversation/domain"
 	"neuromesh/internal/graph"
+
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 // Constants for graph node types and relationships
@@ -20,6 +22,7 @@ const (
 	RelationshipInSession             = "IN_SESSION"
 	RelationshipParticipantIn         = "PARTICIPANT_IN"
 	RelationshipLinkedToPlan          = "LINKED_TO_PLAN"
+	RelationshipBelongsTo             = "BELONGS_TO"
 
 	TimeFormat = "2006-01-02T15:04:05Z"
 )
@@ -54,7 +57,7 @@ func (r *GraphConversationRepository) EnsureConversationSchema(ctx context.Conte
 	}
 
 	// Create indexes for Conversation nodes
-	conversationIndexes := []string{"user_id", "session_id", "status", "created_at", "updated_at"}
+	conversationIndexes := []string{"user_id", "session_id", "project_id", "status", "created_at", "updated_at"}
 	for _, property := range conversationIndexes {
 		if err := r.graph.CreateIndex(ctx, NodeTypeConversation, property); err != nil {
 			return fmt.Errorf("failed to create conversation %s index: %w", property, err)
@@ -88,6 +91,7 @@ func (r *GraphConversationRepository) CreateConversation(ctx context.Context, co
 		"id":                 conversation.ID,
 		"session_id":         conversation.SessionID,
 		"user_id":            conversation.UserID,
+		"project_id":         conversation.ProjectID,
 		"status":             string(conversation.Status),
 		"execution_plan_ids": conversation.ExecutionPlanIDs,
 		"created_at":         formatTime(conversation.CreatedAt),
@@ -368,6 +372,11 @@ func (r *GraphConversationRepository) mapToConversation(props map[string]interfa
 		return nil, fmt.Errorf("invalid user_id")
 	}
 
+	projectID, ok := props["project_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid project_id")
+	}
+
 	statusStr, ok := props["status"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid status")
@@ -416,6 +425,7 @@ func (r *GraphConversationRepository) mapToConversation(props map[string]interfa
 		ID:               id,
 		SessionID:        sessionID,
 		UserID:           userID,
+		ProjectID:        projectID,
 		Status:           domain.ConversationStatus(statusStr),
 		Messages:         make([]domain.ConversationMessage, 0), // Messages loaded separately
 		ExecutionPlanIDs: executionPlanIDs,
@@ -479,4 +489,77 @@ func (r *GraphConversationRepository) mapToMessage(props map[string]interface{})
 	}
 
 	return message, nil
+}
+
+// GetConversationContext retrieves conversation context using graph traversal
+// REAL IMPLEMENTATION: Graph traversal with Cypher query
+func (r *GraphConversationRepository) GetConversationContext(ctx context.Context, conversationID string) (*domain.ConversationContextData, error) {
+	// Type assert to get Neo4j driver access for direct Cypher queries
+	neo4jGraph, ok := r.graph.(*graph.Neo4jGraph)
+	if !ok {
+		return nil, fmt.Errorf("GetConversationContext requires Neo4j graph implementation")
+	}
+
+	driver := neo4jGraph.Driver()
+	session := driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	// Cypher query to traverse relationships and get full context
+	query := `
+		MATCH (c:Conversation {id: $conversationID})
+		OPTIONAL MATCH (s:Session)-[:IN_SESSION]->(c)
+		OPTIONAL MATCH (u:User)-[:PARTICIPANT_IN]->(c)  
+		OPTIONAL MATCH (c)-[:BELONGS_TO]->(p:Project)
+		RETURN 
+			c.id as conversationID,
+			s.id as sessionID,
+			u.id as userID,
+			p.id as projectID,
+			p.name as projectName
+	`
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, map[string]interface{}{
+			"conversationID": conversationID,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if !result.Next(ctx) {
+			return nil, fmt.Errorf("conversation not found: %s", conversationID)
+		}
+
+		record := result.Record()
+
+		// Extract values, handling nil cases for optional matches
+		var sessionID, userID, projectID, projectName string
+
+		if record.Values[1] != nil {
+			sessionID = record.Values[1].(string)
+		}
+		if record.Values[2] != nil {
+			userID = record.Values[2].(string)
+		}
+		if record.Values[3] != nil {
+			projectID = record.Values[3].(string)
+		}
+		if record.Values[4] != nil {
+			projectName = record.Values[4].(string)
+		}
+
+		return &domain.ConversationContextData{
+			ConversationID: conversationID,
+			SessionID:      sessionID,
+			UserID:         userID,
+			ProjectID:      projectID,
+			ProjectName:    projectName,
+		}, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get conversation context: %w", err)
+	}
+
+	return result.(*domain.ConversationContextData), nil
 }

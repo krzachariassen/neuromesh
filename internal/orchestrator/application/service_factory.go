@@ -28,6 +28,7 @@ type ServiceFactory struct {
 	aiProvider            aiDomain.AIProvider
 	correlationTracker    *infrastructure.CorrelationTracker
 	globalMessageConsumer *infrastructure.GlobalMessageConsumer
+	synthesisEventHandler *executionApp.SynthesisEventHandler
 	// Conversation services
 	conversationService conversationApp.ConversationService
 	userService         userApp.UserService
@@ -36,7 +37,7 @@ type ServiceFactory struct {
 	started             bool // Track startup state to prevent double-start
 }
 
-// NewServiceFactory creates a new service factory with proper dependency wiring
+// NewServiceFactory creates a new service factory with clean abstractions
 func NewServiceFactory(
 	logger logging.Logger,
 	graph graph.Graph,
@@ -52,10 +53,17 @@ func NewServiceFactory(
 	// Create AIMessageBus from the base MessageBus (only if dependencies are available)
 	var aiMessageBus messaging.AIMessageBus
 	var globalMessageConsumer *infrastructure.GlobalMessageConsumer
+	var synthesisEventHandler *executionApp.SynthesisEventHandler
 
 	if messageBus != nil && graph != nil {
 		aiMessageBus = messaging.NewAIMessageBus(messageBus, graph, logger)
 		globalMessageConsumer = infrastructure.NewGlobalMessageConsumer(aiMessageBus, correlationTracker)
+		
+		// Create synthesis event handler using clean MessageBus domain events
+		executionPlanRepo := planningInfra.NewGraphExecutionPlanRepository(graph)
+		resultSynthesizer := executionApp.NewAIResultSynthesizer(aiProvider, executionPlanRepo)
+		coordinator := executionApp.NewExecutionCoordinator(executionPlanRepo, resultSynthesizer)
+		synthesisEventHandler = executionApp.NewSynthesisEventHandler(coordinator, messageBus, executionPlanRepo, resultSynthesizer)
 	}
 
 	// Create conversation and user services
@@ -80,6 +88,7 @@ func NewServiceFactory(
 		aiProvider:            aiProvider,
 		correlationTracker:    correlationTracker,
 		globalMessageConsumer: globalMessageConsumer,
+		synthesisEventHandler: synthesisEventHandler,
 		conversationService:   conversationService,
 		userService:           userService,
 		shutdownContext:       shutdownCtx,
@@ -99,21 +108,17 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	// Create all application services with proper dependencies using new unified planning approach
 	aiPlanningEngine := planningApp.NewAIPlanningEngineWithRepositories(sf.aiProvider, executionPlanRepo, planningResultRepo)
 	graphExplorer := NewGraphExplorer(agentService)
-	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker, executionPlanRepo)
+	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker, executionPlanRepo, sf.messageBus)
 
 	// Create result synthesizer for intelligent result combination
 	resultSynthesizer := executionApp.NewAIResultSynthesizer(sf.aiProvider, executionPlanRepo)
 
-	// Create execution coordinator for async execution coordination (Phase 3)
-	executionCoordinator := executionApp.NewExecutionCoordinator(executionPlanRepo, resultSynthesizer)
-
-	// Wire everything together using new unified planning approach
+	// Wire everything together using AI-native execution approach
 	return NewOrchestratorService(
 		aiPlanningEngine,
 		graphExplorer,
 		aiExecutionEngine,
 		sf.conversationService,
-		executionCoordinator, // NEW: Async execution coordination
 		resultSynthesizer,
 		executionPlanRepo,
 		sf.logger,
@@ -143,6 +148,15 @@ func (sf *ServiceFactory) StartServices(ctx context.Context) error {
 	err := sf.globalMessageConsumer.StartConsumption(sf.shutdownContext, "ai-orchestrator")
 	if err != nil {
 		return fmt.Errorf("failed to start global message consumer: %w", err)
+	}
+
+	// Start synthesis event handler for agent completion coordination
+	if sf.synthesisEventHandler != nil {
+		err = sf.synthesisEventHandler.StartEventListener(sf.shutdownContext)
+		if err != nil {
+			return fmt.Errorf("failed to start synthesis event handler: %w", err)
+		}
+		sf.logger.Info("✅ Synthesis event handler started for agent completion coordination")
 	}
 
 	// Mark as started

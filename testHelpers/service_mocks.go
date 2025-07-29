@@ -24,8 +24,8 @@ func NewMockConversationService() *MockConversationService {
 	return &MockConversationService{}
 }
 
-func (m *MockConversationService) CreateConversation(ctx context.Context, id, sessionID, userID string) (*conversationDomain.Conversation, error) {
-	args := m.Called(ctx, id, sessionID, userID)
+func (m *MockConversationService) CreateConversation(ctx context.Context, id, sessionID, userID, projectID string) (*conversationDomain.Conversation, error) {
+	args := m.Called(ctx, id, sessionID, userID, projectID)
 	return args.Get(0).(*conversationDomain.Conversation), args.Error(1)
 }
 
@@ -102,6 +102,11 @@ func (m *MockConversationService) LinkExecutionPlan(ctx context.Context, convers
 func (m *MockConversationService) EnsureSchema(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)
+}
+
+func (m *MockConversationService) GetConversationContext(ctx context.Context, conversationID string) (*conversationApp.ConversationContext, error) {
+	args := m.Called(ctx, conversationID)
+	return args.Get(0).(*conversationApp.ConversationContext), args.Error(1)
 }
 
 // MockUserService provides a testify-based mock for user service operations

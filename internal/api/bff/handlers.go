@@ -20,12 +20,7 @@ func (s *Service) ChatHandler() http.Handler {
 			return
 		}
 
-		// Validate request
-		if req.SessionID == "" {
-			http.Error(w, "session_id is required", http.StatusBadRequest)
-			return
-		}
-
+		// Validate request (session_id is now optional - will be auto-generated)
 		if req.Message == "" {
 			http.Error(w, "message is required", http.StatusBadRequest)
 			return
@@ -52,11 +47,8 @@ func (s *Service) ChatHandler() http.Handler {
 func (s *Service) WebSocketHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Get session ID from query parameter
+		// Get session_id from query parameter (optional - will be auto-generated if not provided)
 		sessionID := r.URL.Query().Get("session_id")
-		if sessionID == "" {
-			http.Error(w, "session_id query parameter is required", http.StatusBadRequest)
-			return
-		}
 
 		// Upgrade connection to WebSocket
 		conn, err := s.upgrader.Upgrade(w, r, nil)
@@ -69,6 +61,7 @@ func (s *Service) WebSocketHandler() http.Handler {
 		s.logger.Info("WebSocket connection established", "sessionID", sessionID)
 
 		// Handle WebSocket messages
+	messageLoop:
 		for {
 			var msg struct {
 				Type    string `json:"type"`
@@ -99,14 +92,15 @@ func (s *Service) WebSocketHandler() http.Handler {
 
 				// Send response back through WebSocket
 				wsResponse := map[string]interface{}{
-					"type":           "response",
-					"content":        response.Content,
-					"session_id":     response.SessionID,
-					"correlation_id": response.CorrelationID,
+					"type":            "response",
+					"content":         response.Content,
+					"session_id":      response.SessionID,
+					"conversation_id": response.ConversationID,
+					"correlation_id":  response.CorrelationID,
 				}
 				if err := conn.WriteJSON(wsResponse); err != nil {
 					s.logger.Error("Failed to send WebSocket response", err)
-					break
+					break messageLoop
 				}
 
 			case "ping":
@@ -116,7 +110,7 @@ func (s *Service) WebSocketHandler() http.Handler {
 				}
 				if err := conn.WriteJSON(pongResponse); err != nil {
 					s.logger.Error("Failed to send pong response", err)
-					break
+					break messageLoop
 				}
 
 			default:

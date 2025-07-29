@@ -2,8 +2,8 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"strings"
 
 	"neuromesh/internal/agent/domain"
 )
@@ -29,7 +29,7 @@ func NewGraphExplorer(agentService AgentService) *GraphExplorer {
 }
 
 // GetAgentContext retrieves all available agents and formats them for AI consumption
-// Replaces the getAllAgents() functionality from the old orchestrator
+// Returns structured JSON format for precise AI parsing
 func (g *GraphExplorer) GetAgentContext(ctx context.Context) (string, error) {
 	agents, err := g.agentService.GetAvailableAgents(ctx)
 	if err != nil {
@@ -37,27 +37,41 @@ func (g *GraphExplorer) GetAgentContext(ctx context.Context) (string, error) {
 	}
 
 	if len(agents) == 0 {
-		return "No agents currently registered", nil
+		return `{"available_agents": []}`, nil
 	}
 
-	var context strings.Builder
-	context.WriteString("Available agents:\n")
+	// Create structured agent data for AI consumption
+	type AgentContext struct {
+		ID           string                   `json:"id"`
+		Name         string                   `json:"name"`
+		Status       string                   `json:"status"`
+		Capabilities []domain.AgentCapability `json:"capabilities"`
+	}
 
+	type AgentContextResponse struct {
+		AvailableAgents []AgentContext `json:"available_agents"`
+	}
+
+	var agentContexts []AgentContext
 	for _, agent := range agents {
-		context.WriteString(fmt.Sprintf("- %s (ID: %s, Status: %s)\n",
-			agent.Name, agent.ID, string(agent.Status)))
-
-		if len(agent.Capabilities) > 0 {
-			capabilityNames := make([]string, len(agent.Capabilities))
-			for i, cap := range agent.Capabilities {
-				capabilityNames[i] = cap.Name
-			}
-			context.WriteString(fmt.Sprintf("  Capabilities: %s\n",
-				strings.Join(capabilityNames, ", ")))
-		}
+		agentContexts = append(agentContexts, AgentContext{
+			ID:           agent.ID,
+			Name:         agent.Name,
+			Status:       string(agent.Status),
+			Capabilities: agent.Capabilities,
+		})
 	}
 
-	return context.String(), nil
+	response := AgentContextResponse{
+		AvailableAgents: agentContexts,
+	}
+
+	jsonBytes, err := json.Marshal(response)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal agent context to JSON: %w", err)
+	}
+
+	return string(jsonBytes), nil
 }
 
 // FindCapableAgents finds agents with specific capabilities

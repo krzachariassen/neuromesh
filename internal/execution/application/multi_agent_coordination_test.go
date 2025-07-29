@@ -251,6 +251,21 @@ func (m *mockRepository) GetAgentResultByID(ctx context.Context, resultID string
 	return args.Get(0).(*domain.AgentResult), args.Error(1)
 }
 
+func (m *mockRepository) GetPlanIDByCorrelationID(ctx context.Context, correlationID string) (string, error) {
+	args := m.Called(ctx, correlationID)
+	return args.String(0), args.Error(1)
+}
+
+func (m *mockRepository) StoreSynthesisResult(ctx context.Context, result *domain.SynthesisResult) error {
+	args := m.Called(ctx, result)
+	return args.Error(0)
+}
+
+func (m *mockRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*domain.SynthesisResult, error) {
+	args := m.Called(ctx, planID)
+	return args.Get(0).(*domain.SynthesisResult), args.Error(1)
+}
+
 type mockSynthesizer struct {
 	mock.Mock
 }

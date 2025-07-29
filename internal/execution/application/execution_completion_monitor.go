@@ -22,12 +22,12 @@ type ExecutionCompletionMonitor struct {
 
 // NewExecutionCompletionMonitor creates a new execution completion monitor
 func NewExecutionCompletionMonitor(
-	eventBus messaging.AIMessageBus,
+	messageBus messaging.MessageBus,
 	synthesizer domain.ResultSynthesizer,
 	repository planningDomain.ExecutionPlanRepository,
 ) *ExecutionCompletionMonitor {
 	coordinator := NewExecutionCoordinator(repository, synthesizer)
-	handler := NewSynthesisEventHandler(coordinator, eventBus, repository, synthesizer)
+	handler := NewSynthesisEventHandler(coordinator, messageBus, repository, synthesizer)
 
 	return &ExecutionCompletionMonitor{
 		SynthesisEventHandler: handler,
@@ -38,7 +38,7 @@ func NewExecutionCompletionMonitor(
 
 // OnAgentResult handles agent result events and checks for execution plan completion
 // This delegates to the existing SynthesisEventHandler
-func (m *ExecutionCompletionMonitor) OnAgentResult(ctx context.Context, event *AgentCompletedEvent) error {
+func (m *ExecutionCompletionMonitor) OnAgentResult(ctx context.Context, event *messaging.AgentCompletedEvent) error {
 	m.logger.Info("Processing agent completion event",
 		"plan_id", event.PlanID,
 		"step_id", event.StepID,

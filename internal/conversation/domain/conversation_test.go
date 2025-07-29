@@ -13,15 +13,17 @@ func TestNewConversation(t *testing.T) {
 		id := "conv-123"
 		sessionID := "session-456"
 		userID := "user-789"
+		projectID := "project-abc"
 
 		// When
-		conversation, err := NewConversation(id, sessionID, userID)
+		conversation, err := NewConversation(id, sessionID, userID, projectID)
 
 		// Then
 		assert.NoError(t, err)
 		assert.Equal(t, id, conversation.ID)
 		assert.Equal(t, sessionID, conversation.SessionID)
 		assert.Equal(t, userID, conversation.UserID)
+		assert.Equal(t, projectID, conversation.ProjectID)
 		assert.Equal(t, ConversationStatusActive, conversation.Status)
 		assert.Empty(t, conversation.Messages)
 		assert.NotZero(t, conversation.CreatedAt)
@@ -30,7 +32,7 @@ func TestNewConversation(t *testing.T) {
 
 	t.Run("should fail with empty conversation ID", func(t *testing.T) {
 		// When
-		_, err := NewConversation("", "session-456", "user-789")
+		_, err := NewConversation("", "session-456", "user-789", "project-abc")
 
 		// Then
 		assert.Error(t, err)
@@ -39,7 +41,7 @@ func TestNewConversation(t *testing.T) {
 
 	t.Run("should fail with empty session ID", func(t *testing.T) {
 		// When
-		_, err := NewConversation("conv-123", "", "user-789")
+		_, err := NewConversation("conv-123", "", "user-789", "project-abc")
 
 		// Then
 		assert.Error(t, err)
@@ -48,18 +50,27 @@ func TestNewConversation(t *testing.T) {
 
 	t.Run("should fail with empty user ID", func(t *testing.T) {
 		// When
-		_, err := NewConversation("conv-123", "session-456", "")
+		_, err := NewConversation("conv-123", "session-456", "", "project-abc")
 
 		// Then
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "user ID cannot be empty")
+	})
+
+	t.Run("should fail with empty project ID", func(t *testing.T) {
+		// When
+		_, err := NewConversation("conv-123", "session-456", "user-789", "")
+
+		// Then
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "project ID cannot be empty")
 	})
 }
 
 func TestConversation_AddMessage(t *testing.T) {
 	t.Run("should add user message", func(t *testing.T) {
 		// Given
-		conversation, _ := NewConversation("conv-123", "session-456", "user-789")
+		conversation, _ := NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		messageID := "msg-1"
 		content := "Hello, count words in: Hello world"
 
@@ -79,7 +90,7 @@ func TestConversation_AddMessage(t *testing.T) {
 
 	t.Run("should add assistant message", func(t *testing.T) {
 		// Given
-		conversation, _ := NewConversation("conv-123", "session-456", "user-789")
+		conversation, _ := NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		messageID := "msg-2"
 		content := "The text 'Hello world' contains 2 words."
 
@@ -96,7 +107,7 @@ func TestConversation_AddMessage(t *testing.T) {
 
 	t.Run("should add system message", func(t *testing.T) {
 		// Given
-		conversation, _ := NewConversation("conv-123", "session-456", "user-789")
+		conversation, _ := NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		messageID := "msg-3"
 		content := "AI Decision: Executing word count via text-processor agent"
 
@@ -116,7 +127,7 @@ func TestConversation_AddMessage(t *testing.T) {
 
 	t.Run("should fail with empty message ID", func(t *testing.T) {
 		// Given
-		conversation, _ := NewConversation("conv-123", "session-456", "user-789")
+		conversation, _ := NewConversation("conv-123", "session-456", "user-789", "project-abc")
 
 		// When
 		err := conversation.AddMessage("", MessageRoleUser, "test", nil)
@@ -130,7 +141,7 @@ func TestConversation_AddMessage(t *testing.T) {
 func TestConversation_LinkExecutionPlan(t *testing.T) {
 	t.Run("should link execution plan", func(t *testing.T) {
 		// Given
-		conversation, _ := NewConversation("conv-123", "session-456", "user-789")
+		conversation, _ := NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		planID := "plan-abc"
 
 		// When
@@ -143,7 +154,7 @@ func TestConversation_LinkExecutionPlan(t *testing.T) {
 
 	t.Run("should fail with empty plan ID", func(t *testing.T) {
 		// Given
-		conversation, _ := NewConversation("conv-123", "session-456", "user-789")
+		conversation, _ := NewConversation("conv-123", "session-456", "user-789", "project-abc")
 
 		// When
 		err := conversation.LinkExecutionPlan("")
@@ -157,7 +168,7 @@ func TestConversation_LinkExecutionPlan(t *testing.T) {
 func TestConversation_GetMessagesByRole(t *testing.T) {
 	t.Run("should return messages by role", func(t *testing.T) {
 		// Given
-		conversation, _ := NewConversation("conv-123", "session-456", "user-789")
+		conversation, _ := NewConversation("conv-123", "session-456", "user-789", "project-abc")
 		conversation.AddMessage("msg-1", MessageRoleUser, "User message 1", nil)
 		conversation.AddMessage("msg-2", MessageRoleAssistant, "Assistant response", nil)
 		conversation.AddMessage("msg-3", MessageRoleUser, "User message 2", nil)

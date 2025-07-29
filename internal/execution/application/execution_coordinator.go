@@ -132,9 +132,31 @@ func (c *ExecutionCoordinator) StartExecution(ctx context.Context, planID string
 	// 2. Coordinate agents via message bus
 	// 3. Dispatch execution steps to appropriate agents
 	// 4. Monitor progress asynchronously
-	
+
 	// For now, just return success (minimal GREEN implementation for TDD)
 	// This allows TDD tests to pass while we implement the full coordination logic
-	
+
+	return nil
+}
+
+// StoreSynthesisResult synthesizes agent results and stores the final synthesis result
+func (c *ExecutionCoordinator) StoreSynthesisResult(ctx context.Context, planID string) error {
+	// GREEN PHASE: Minimal implementation to make the test pass
+
+	// 1. Synthesize results using the synthesizer
+	synthesisContent, err := c.synthesizer.SynthesizeResults(ctx, planID)
+	if err != nil {
+		return fmt.Errorf("failed to synthesize results for plan %s: %w", planID, err)
+	}
+
+	// 2. Create synthesis result domain entity
+	synthesisResult := domain.NewSynthesisResult(planID, synthesisContent)
+
+	// 3. Store the synthesis result in the graph
+	err = c.executionRepo.StoreSynthesisResult(ctx, synthesisResult)
+	if err != nil {
+		return fmt.Errorf("failed to store synthesis result for plan %s: %w", planID, err)
+	}
+
 	return nil
 }

@@ -82,6 +82,21 @@ func (m *MockExecutionPlanRepository) GetAgentResultByID(ctx context.Context, re
 	return args.Get(0).(*domain.AgentResult), args.Error(1)
 }
 
+func (m *MockExecutionPlanRepository) GetPlanIDByCorrelationID(ctx context.Context, correlationID string) (string, error) {
+	args := m.Called(ctx, correlationID)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *domain.SynthesisResult) error {
+	args := m.Called(ctx, result)
+	return args.Error(0)
+}
+
+func (m *MockExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*domain.SynthesisResult, error) {
+	args := m.Called(ctx, planID)
+	return args.Get(0).(*domain.SynthesisResult), args.Error(1)
+}
+
 // MockResultSynthesizer provides a testify-based mock for result synthesizer operations
 type MockResultSynthesizer struct {
 	mock.Mock

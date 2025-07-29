@@ -52,8 +52,7 @@ func TestGraphPlanningRepository_GetByRequestID_ShouldReturnPlanningHistory(t *t
 	requestID := "req-123"
 
 	// Create multiple planning results for same request (planning evolution)
-	planning1 := domain.NewClarifyPlanningResult(requestID, "unclear symptoms", "healthcare", 60,
-		[]string{"symptom-agent"}, []string{"symptom-agent", "diagnostic-agent"}, "Need more symptom details", "Initial analysis unclear")
+	planning1 := domain.NewClarificationPlanningResult(requestID, "unclear symptoms", "healthcare", 60, "Need more symptom details", "Initial analysis unclear")
 
 	planning2 := domain.NewExecutePlanningResult(requestID, "medical diagnosis", "healthcare", 95,
 		[]string{"symptom-agent", "lab-agent", "diagnostic-agent"},

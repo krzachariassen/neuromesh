@@ -290,3 +290,8 @@ func (bus *AIMessageBusImpl) storeMessageInGraph(ctx context.Context, message *M
 	// TODO: Implement actual graph storage when graph operations are defined
 	return nil
 }
+
+// GetMessageBus returns the underlying MessageBus for direct operations
+func (bus *AIMessageBusImpl) GetMessageBus() MessageBus {
+	return bus.messageBus
+}

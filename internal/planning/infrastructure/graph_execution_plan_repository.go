@@ -615,3 +615,157 @@ func (r *GraphExecutionPlanRepository) mapNodeDataToAgentResult(nodeData map[str
 
 	return result, nil
 }
+
+// GetPlanIDByCorrelationID finds the execution plan ID for a given correlation ID
+// This implements the graph-native approach for linking agent results to execution plans
+func (r *GraphExecutionPlanRepository) GetPlanIDByCorrelationID(ctx context.Context, correlationID string) (string, error) {
+	// In our graph model, correlation IDs are stored as execution step IDs
+	// First, find the execution step with this correlation ID
+	stepFilters := map[string]interface{}{
+		"id": correlationID,
+	}
+
+	steps, err := r.graph.QueryNodes(ctx, "execution_step", stepFilters)
+	if err != nil {
+		return "", fmt.Errorf("failed to query execution step by correlation ID: %w", err)
+	}
+
+	if len(steps) == 0 {
+		// No matching execution step found
+		return "", nil
+	}
+
+	// Get the first matching step
+	step := steps[0]
+
+	// Extract plan_id from the step properties
+	planID, exists := step["plan_id"]
+	if !exists {
+		return "", fmt.Errorf("execution step %s does not have plan_id property", correlationID)
+	}
+
+	planIDStr, ok := planID.(string)
+	if !ok {
+		return "", fmt.Errorf("plan_id is not a string: %T", planID)
+	}
+
+	return planIDStr, nil
+}
+
+// StoreSynthesisResult stores a synthesis result in the graph
+func (r *GraphExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error {
+	if result == nil {
+		return fmt.Errorf("synthesis result cannot be nil")
+	}
+
+	if result.ID == "" {
+		return fmt.Errorf("synthesis result ID cannot be empty")
+	}
+
+	if result.PlanID == "" {
+		return fmt.Errorf("synthesis result plan ID cannot be empty")
+	}
+
+	// Create synthesis result node properties
+	properties := map[string]interface{}{
+		"plan_id":    result.PlanID,
+		"content":    result.Content,
+		"status":     string(result.Status),
+		"created_at": result.CreatedAt.Format(time.RFC3339Nano),
+	}
+
+	// Create the synthesis result node
+	if err := r.graph.AddNode(ctx, "synthesis_result", result.ID, properties); err != nil {
+		return fmt.Errorf("failed to create synthesis result node: %w", err)
+	}
+
+	// Create relationship from execution plan to synthesis result
+	if err := r.graph.AddEdge(ctx, "execution_plan", result.PlanID, "synthesis_result", result.ID, "HAS_SYNTHESIS_RESULT", nil); err != nil {
+		return fmt.Errorf("failed to create HAS_SYNTHESIS_RESULT relationship: %w", err)
+	}
+
+	return nil
+}
+
+// GetSynthesisResultByPlanID retrieves a synthesis result by plan ID
+func (r *GraphExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error) {
+	if planID == "" {
+		return nil, fmt.Errorf("plan ID cannot be empty")
+	}
+
+	// Get edges with targets from the execution plan
+	planEdges, err := r.graph.GetEdgesWithTargets(ctx, "execution_plan", planID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get edges for execution plan %s: %w", planID, err)
+	}
+
+	// Look for synthesis result edge
+	for _, planEdge := range planEdges {
+		if edgeType, ok := planEdge["type"].(string); ok && edgeType == "HAS_SYNTHESIS_RESULT" {
+			if targetType, ok := planEdge["target_type"].(string); ok && targetType == "synthesis_result" {
+				if resultID, ok := planEdge["target_id"].(string); ok {
+					// Get the synthesis result node
+					resultData, err := r.graph.GetNode(ctx, "synthesis_result", resultID)
+					if err != nil {
+						if strings.Contains(err.Error(), "node not found") {
+							return nil, nil // No synthesis result found
+						}
+						return nil, fmt.Errorf("failed to get synthesis result node %s: %w", resultID, err)
+					}
+
+					return r.mapNodeDataToSynthesisResult(resultData)
+				}
+			}
+		}
+	}
+
+	return nil, nil // No synthesis result found
+}
+
+// mapNodeDataToSynthesisResult converts Neo4j node data to SynthesisResult domain entity
+func (r *GraphExecutionPlanRepository) mapNodeDataToSynthesisResult(nodeData map[string]interface{}) (*executionDomain.SynthesisResult, error) {
+	id, ok := nodeData["id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("synthesis result id is not a string")
+	}
+
+	planID, ok := nodeData["plan_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("synthesis result plan_id is not a string")
+	}
+
+	content, ok := nodeData["content"].(string)
+	if !ok {
+		return nil, fmt.Errorf("synthesis result content is not a string")
+	}
+
+	statusStr, ok := nodeData["status"].(string)
+	if !ok {
+		return nil, fmt.Errorf("synthesis result status is not a string")
+	}
+
+	status := executionDomain.SynthesisResultStatus(statusStr)
+
+	createdAtData, ok := nodeData["created_at"]
+	var createdAt time.Time
+	if ok {
+		switch v := createdAtData.(type) {
+		case time.Time:
+			createdAt = v
+		case string:
+			var err error
+			createdAt, err = time.Parse(time.RFC3339, v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse created_at: %w", err)
+			}
+		}
+	}
+
+	return &executionDomain.SynthesisResult{
+		ID:        id,
+		PlanID:    planID,
+		Content:   content,
+		Status:    status,
+		CreatedAt: createdAt,
+	}, nil
+}

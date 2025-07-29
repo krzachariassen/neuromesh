@@ -23,7 +23,7 @@ type GraphExplorerInterface interface {
 
 // AIExecutionEngineInterface defines the interface for AI-native execution orchestration
 type AIExecutionEngineInterface interface {
-	ExecuteWithAgents(ctx context.Context, executionPlan, userInput, userID, agentContext string) (string, error)
+	ExecuteWithAgents(ctx context.Context, executionPlan, userInput, userID, agentContext, planID string) (string, error)
 }
 
 // AIConversationEngineInterface defines the interface for AI-native conversation orchestration
@@ -36,25 +36,19 @@ type ConversationServiceInterface interface {
 	LinkExecutionPlan(ctx context.Context, conversationID, planID string) error
 }
 
-// ExecutionCoordinatorInterface defines the interface for async execution coordination
-type ExecutionCoordinatorInterface interface {
-	StartExecution(ctx context.Context, planID string) error
-}
-
 // NOTE: LearningServiceInterface removed - following YAGNI principles
 // Will be re-implemented when learning features are actually needed
 
 // OrchestratorService represents the clean AI orchestrator service implementation
 // This replaces the old ProcessRequest() functionality with clean architecture
 type OrchestratorService struct {
-	aiPlanningEngine     AIPlanningEngineInterface
-	graphExplorer        GraphExplorerInterface
-	aiExecutionEngine    AIExecutionEngineInterface
-	conversationService  ConversationServiceInterface
-	executionCoordinator ExecutionCoordinatorInterface // NEW: Async execution coordination
-	resultSynthesizer    executionDomain.ResultSynthesizer
-	repository           planningDomain.ExecutionPlanRepository
-	logger               logging.Logger
+	aiPlanningEngine    AIPlanningEngineInterface
+	graphExplorer       GraphExplorerInterface
+	aiExecutionEngine   AIExecutionEngineInterface
+	conversationService ConversationServiceInterface
+	resultSynthesizer   executionDomain.ResultSynthesizer
+	repository          planningDomain.ExecutionPlanRepository
+	logger              logging.Logger
 }
 
 // NewOrchestratorService creates a new orchestrator service implementation
@@ -63,20 +57,18 @@ func NewOrchestratorService(
 	graphExplorer GraphExplorerInterface,
 	aiExecutionEngine AIExecutionEngineInterface,
 	conversationService ConversationServiceInterface,
-	executionCoordinator ExecutionCoordinatorInterface, // NEW: Async execution coordination
 	resultSynthesizer executionDomain.ResultSynthesizer,
 	repository planningDomain.ExecutionPlanRepository,
 	logger logging.Logger,
 ) *OrchestratorService {
 	return &OrchestratorService{
-		aiPlanningEngine:     aiPlanningEngine,
-		graphExplorer:        graphExplorer,
-		aiExecutionEngine:    aiExecutionEngine,
-		conversationService:  conversationService,
-		executionCoordinator: executionCoordinator, // NEW: Async execution coordination
-		resultSynthesizer:    resultSynthesizer,
-		repository:           repository,
-		logger:               logger,
+		aiPlanningEngine:    aiPlanningEngine,
+		graphExplorer:       graphExplorer,
+		aiExecutionEngine:   aiExecutionEngine,
+		conversationService: conversationService,
+		resultSynthesizer:   resultSynthesizer,
+		repository:          repository,
+		logger:              logger,
 	}
 }
 
@@ -131,25 +123,35 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		ors.logger.Info("🤔 Planning type: Clarify")
 		result.Message = planningResult.ClarificationQuestion
 	} else if planningResult.Type == planningDomain.PlanningTypeExecute {
-		ors.logger.Info("🚀 Planning type: Execute - Pure Orchestration", "requiredAgents", len(planningResult.RequiredAgents))
+		ors.logger.Info("🚀 Planning type: Execute - AI-Native Orchestration", "requiredAgents", len(planningResult.RequiredAgents))
 		result.ExecutionPlanID = planningResult.ExecutionPlanID
 
-		// PHASE 3: Pure orchestration - initiate async execution via ExecutionCoordinator
-		if ors.executionCoordinator != nil {
-			err = ors.executionCoordinator.StartExecution(ctx, planningResult.ExecutionPlanID)
-			if err != nil {
-				ors.logger.Error("❌ Failed to start async execution", err)
-				result.Success = false
-				result.Error = fmt.Sprintf("Failed to start execution: %v", err)
-			} else {
-				ors.logger.Info("✅ Async execution started", "planID", planningResult.ExecutionPlanID)
-				result.Status = "executing"
-				// NO immediate message - pure orchestration returns plan ID only
-			}
+		// AI-Native Execution: Use AIExecutionEngine for intelligent coordination
+		if ors.aiExecutionEngine != nil {
+			// Convert planning result to execution plan format for AIExecutionEngine
+			executionPlan := ors.convertPlanningResultToExecutionPlan(planningResult)
+
+			// Start AI-native execution asynchronously
+			go func() {
+				// Create a background context for async execution (not tied to HTTP request)
+				backgroundCtx := context.Background()
+				ors.logger.Info("🤖 Starting AI-native execution", "planID", planningResult.ExecutionPlanID)
+
+				finalResult, err := ors.aiExecutionEngine.ExecuteWithAgents(backgroundCtx, executionPlan, request.UserInput, request.UserID, agentContext, planningResult.ExecutionPlanID)
+				if err != nil {
+					ors.logger.Error("❌ AI-native execution failed", err, "planID", planningResult.ExecutionPlanID)
+				} else {
+					ors.logger.Info("✅ AI-native execution completed", "planID", planningResult.ExecutionPlanID, "result", finalResult)
+				}
+			}()
+
+			ors.logger.Info("✅ AI-native async execution started", "planID", planningResult.ExecutionPlanID)
+			result.Status = "executing"
+			// NO immediate message - pure orchestration returns plan ID only
 		} else {
-			ors.logger.Warn("⚠️ ExecutionCoordinator not available, falling back to legacy execution")
-			// Legacy fallback - this will be removed in final implementation
-			result.Message = "Execution initiated (legacy mode)"
+			ors.logger.Error("❌ AIExecutionEngine not available", fmt.Errorf("AIExecutionEngine is nil"))
+			result.Success = false
+			result.Error = "AI execution engine not available"
 		}
 	} else {
 		ors.logger.Warn("❓ Unknown planning type", "type", planningResult.Type)
@@ -281,4 +283,27 @@ func (ors *OrchestratorService) IsExecutionComplete(ctx context.Context, planID 
 	}
 
 	return true, nil
+}
+
+// convertPlanningResultToExecutionPlan converts a planning result to execution plan format
+func (ors *OrchestratorService) convertPlanningResultToExecutionPlan(planningResult *planningDomain.PlanningResult) string {
+	if planningResult == nil {
+		return ""
+	}
+
+	// Create a simple execution plan description for AIExecutionEngine
+	executionPlan := fmt.Sprintf(`Execution Plan ID: %s
+Intent: %s
+Category: %s
+Required Agents: %v
+Agent Gap: %v
+Reasoning: %s`,
+		planningResult.ExecutionPlanID,
+		planningResult.Intent,
+		planningResult.Category,
+		planningResult.RequiredAgents,
+		planningResult.AgentGap,
+		planningResult.Reasoning)
+
+	return executionPlan
 }

@@ -28,4 +28,11 @@ type ExecutionPlanRepository interface {
 	GetAgentResultsByExecutionPlan(ctx context.Context, planID string) ([]*executionDomain.AgentResult, error)
 	GetAgentResultsByExecutionStep(ctx context.Context, stepID string) ([]*executionDomain.AgentResult, error)
 	GetAgentResultByID(ctx context.Context, resultID string) (*executionDomain.AgentResult, error)
+
+	// Correlation mapping operations - NEW for agent result linking
+	GetPlanIDByCorrelationID(ctx context.Context, correlationID string) (string, error)
+
+	// Synthesis Result operations - NEW for synthesis result storage
+	StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error
+	GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error)
 }

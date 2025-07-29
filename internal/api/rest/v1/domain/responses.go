@@ -67,3 +67,24 @@ type ErrorResponse struct {
 	Code    string                 `json:"code,omitempty"`
 	Details map[string]interface{} `json:"details,omitempty"`
 }
+
+// ChatRequest represents a request to start a new conversation
+type ChatRequest struct {
+	Message   string `json:"message"`
+	ProjectID string `json:"project_id"`
+	UserID    string `json:"user_id"`
+}
+
+// ChatMessage represents a message in an existing conversation
+type ChatMessage struct {
+	Message string `json:"message"`
+}
+
+// ChatResponse represents a response from the chat API
+type ChatResponse struct {
+	ConversationID string `json:"conversation_id"`
+	SessionID      string `json:"session_id"`
+	Response       string `json:"response"`
+	ProjectID      string `json:"project_id"`
+	UserID         string `json:"user_id"`
+}

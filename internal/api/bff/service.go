@@ -20,19 +20,26 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// ChatRequest represents a chat request from the web UI
+// ChatRequest represents a chat request from the web UI with hierarchical context
 type ChatRequest struct {
-	SessionID string `json:"session_id"`
-	Message   string `json:"message"`
+	Message        string `json:"message"`
+	SessionID      string `json:"session_id,omitempty"`      // Auto-generated if not provided
+	TenantID       string `json:"tenant_id,omitempty"`       // Future: Organization/Company level
+	ProjectID      string `json:"project_id,omitempty"`      // Future: Project/Department level
+	ConversationID string `json:"conversation_id,omitempty"` // Auto-generated per conversation
+	UserID         string `json:"user_id,omitempty"`         // Auto-generated from session
 }
 
 // WebResponse represents a response from the BFF to the web client
 type WebResponse struct {
-	Content       string `json:"content"`
-	SessionID     string `json:"session_id"`
-	Intent        string `json:"intent,omitempty"`
-	Error         string `json:"error,omitempty"`
-	CorrelationID string `json:"correlation_id,omitempty"`
+	Content        string `json:"content"`
+	SessionID      string `json:"session_id"`
+	ConversationID string `json:"conversation_id"`
+	ProjectID      string `json:"project_id,omitempty"` // Future: Include project context
+	TenantID       string `json:"tenant_id,omitempty"`  // Future: Include tenant context
+	Intent         string `json:"intent,omitempty"`
+	Error          string `json:"error,omitempty"`
+	CorrelationID  string `json:"correlation_id,omitempty"`
 }
 
 // AIOrchestrator defines the interface for AI orchestration operations
@@ -87,12 +94,9 @@ func NewService(
 	}
 }
 
-// ProcessMessage processes a message from a web session with full conversation persistence
+// ProcessMessage processes a message through the BFF with hierarchical ID management
 func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string) (*WebResponse, error) {
-	// Validate input
-	if sessionID == "" {
-		return nil, errors.New("session ID cannot be empty")
-	}
+	// Validate inputs (allowing sessionID to be empty for auto-generation)
 	if message == "" {
 		return nil, errors.New("message cannot be empty")
 	}
@@ -102,22 +106,30 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 		return nil, ctx.Err()
 	}
 
-	s.logger.Debug("Processing web message with conversation persistence",
-		"sessionID", sessionID, "message", message)
-
-	// 1. Ensure user and session exist
-	user, _, err := s.ensureUserAndSession(ctx, sessionID)
-	if err != nil {
-		s.logger.Error("Failed to ensure user and session", err, "sessionID", sessionID)
-		return s.handleError("Failed to initialize session", sessionID), nil
+	// Create request structure for hierarchical processing
+	request := &ChatRequest{
+		Message:   message,
+		SessionID: sessionID, // May be empty - will be auto-generated
 	}
 
-	// 2. Get or create conversation for this session
-	conversation, err := s.getOrCreateConversation(ctx, sessionID, user.ID)
+	s.logger.Debug("Processing web message with conversation persistence",
+		"providedSessionID", sessionID, "message", message)
+
+	// 1. Get or create conversation with hierarchical context (this handles all ID generation)
+	conversation, actualSessionID, _, err := s.getOrCreateConversation(ctx, request)
 	if err != nil {
 		s.logger.Error("Failed to get or create conversation", err, "sessionID", sessionID)
-		return s.handleError("Failed to initialize conversation", sessionID), nil
+		return s.handleError("Failed to initialize conversation", actualSessionID), nil
 	}
+
+	// 2. Ensure user and session exist (using the actual session ID)
+	user, _, err := s.ensureUserAndSession(ctx, actualSessionID)
+	if err != nil {
+		s.logger.Error("Failed to ensure user and session", err, "sessionID", actualSessionID)
+		return s.handleError("Failed to initialize session", actualSessionID), nil
+	}
+
+	// 3. Add user message to conversation
 
 	// 3. Add user message to conversation
 	userMessageID := generateMessageID()
@@ -129,25 +141,25 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 		// Continue processing even if message storage fails
 	}
 
-	// 4. Process through orchestrator using the new interface
+	// 4. Process through orchestrator using the new hierarchical interface
 	orchestratorRequest := &orchestratorApp.OrchestratorRequest{
 		UserInput:      message,
 		UserID:         user.ID,
-		SessionID:      sessionID,
+		SessionID:      actualSessionID, // Use the actual session ID (auto-generated if needed)
 		MessageID:      userMessageID,
 		ConversationID: conversation.ID, // Pass conversation ID for cross-domain relationships
 	}
 
 	aiResponse, err := s.orchestrator.ProcessUserRequest(ctx, orchestratorRequest)
 	if err != nil {
-		s.logger.Error("Failed to process orchestrator request", err, "sessionID", sessionID)
-		return s.handleError("Failed to process request", sessionID), nil
+		s.logger.Error("Failed to process orchestrator request", err, "sessionID", actualSessionID)
+		return s.handleError("Failed to process request", actualSessionID), nil
 	}
 
 	// Check if orchestrator processing was successful
 	if !aiResponse.Success {
-		s.logger.Error("Orchestrator processing failed", errors.New(aiResponse.Error), "sessionID", sessionID)
-		return s.handleError("Failed to process request", sessionID), nil
+		s.logger.Error("Orchestrator processing failed", errors.New(aiResponse.Error), "sessionID", actualSessionID)
+		return s.handleError("Failed to process request", actualSessionID), nil
 	}
 
 	// 5. Add AI response to conversation
@@ -166,9 +178,9 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 	// should be handled by the orchestrator as part of domain logic,
 	// not by the BFF layer. The BFF should only handle presentation concerns.
 
-	// 6. Build and return web response
-	response := s.buildWebResponse(aiResponse, sessionID)
-	s.logger.Debug("Web message processed successfully", "sessionID", sessionID, "response", response.Content)
+	// 6. Build and return web response with hierarchical IDs
+	response := s.buildWebResponse(aiResponse, actualSessionID, conversation.ID, conversation.ProjectID)
+	s.logger.Debug("Web message processed successfully", "sessionID", actualSessionID, "response", response.Content)
 
 	return response, nil
 }
@@ -246,29 +258,67 @@ func (s *Service) getOrCreateSession(sessionID string) *WebSession {
 	return session
 }
 
-// getOrCreateConversation gets or creates a conversation for the session
-func (s *Service) getOrCreateConversation(ctx context.Context, sessionID, userID string) (*conversationDomain.Conversation, error) {
-	// Try to find existing conversation for this session
-	conversations, err := s.conversationService.FindConversationsBySession(ctx, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find conversations for session: %w", err)
+// getOrCreateConversation gets or creates a conversation with hierarchical context support
+func (s *Service) getOrCreateConversation(ctx context.Context, request *ChatRequest) (*conversationDomain.Conversation, string, string, error) {
+	// Ensure sessionID is set (auto-generate if not provided)
+	sessionID := s.ensureSessionID(request.SessionID)
+
+	// Generate userID from sessionID for consistency
+	userID := generateUserID(sessionID)
+
+	// Determine projectID (use provided or default)
+	projectID := request.ProjectID
+	if projectID == "" {
+		projectID = "default-project" // Fallback for backward compatibility
 	}
 
-	// Find an active conversation
-	for _, conv := range conversations {
-		if conv.Status == conversationDomain.ConversationStatusActive {
-			return conv, nil
+	var conversation *conversationDomain.Conversation
+	var err error
+
+	if request.ConversationID != "" {
+		// Try to get existing conversation
+		conversation, err = s.conversationService.GetConversation(ctx, request.ConversationID)
+		if err != nil {
+			// Conversation doesn't exist, create new one with the provided ID
+			conversation, err = s.conversationService.CreateConversation(ctx, request.ConversationID, sessionID, userID, projectID)
+			if err != nil {
+				return nil, "", "", fmt.Errorf("failed to create conversation with ID %s: %w", request.ConversationID, err)
+			}
+		}
+	} else {
+		// Try to find existing conversation for this session
+		conversations, err := s.conversationService.FindConversationsBySession(ctx, sessionID)
+		if err != nil {
+			return nil, "", "", fmt.Errorf("failed to find conversations for session: %w", err)
+		}
+
+		// Find an active conversation
+		for _, conv := range conversations {
+			if conv.Status == conversationDomain.ConversationStatusActive {
+				conversation = conv
+				break
+			}
+		}
+
+		// No active conversation found, create a new one
+		if conversation == nil {
+			conversationID := generateConversationID()
+			conversation, err = s.conversationService.CreateConversation(ctx, conversationID, sessionID, userID, projectID)
+			if err != nil {
+				return nil, "", "", fmt.Errorf("failed to create conversation: %w", err)
+			}
 		}
 	}
 
-	// No active conversation found, create a new one
-	conversationID := generateConversationID()
-	conversation, err := s.conversationService.CreateConversation(ctx, conversationID, sessionID, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create conversation: %w", err)
-	}
+	return conversation, sessionID, userID, nil
+}
 
-	return conversation, nil
+// ensureSessionID returns the provided sessionID or generates a new one if empty
+func (s *Service) ensureSessionID(providedSessionID string) string {
+	if providedSessionID != "" {
+		return providedSessionID
+	}
+	return fmt.Sprintf("session-%s", uuid.New().String())
 }
 
 // buildAssistantMetadata builds metadata for assistant messages based on orchestrator result
@@ -298,11 +348,13 @@ func (s *Service) buildAssistantMetadata(aiResponse *orchestratorApp.Orchestrato
 	return metadata
 }
 
-// buildWebResponse builds a WebResponse from an orchestrator result
-func (s *Service) buildWebResponse(aiResponse *orchestratorApp.OrchestratorResult, sessionID string) *WebResponse {
+// buildWebResponse builds a WebResponse from an orchestrator result with hierarchical context
+func (s *Service) buildWebResponse(aiResponse *orchestratorApp.OrchestratorResult, sessionID, conversationID, projectID string) *WebResponse {
 	response := &WebResponse{
-		Content:   aiResponse.Message,
-		SessionID: sessionID,
+		Content:        aiResponse.Message,
+		SessionID:      sessionID,
+		ConversationID: conversationID,
+		ProjectID:      projectID,
 	}
 
 	// Add execution plan ID if available
@@ -313,18 +365,62 @@ func (s *Service) buildWebResponse(aiResponse *orchestratorApp.OrchestratorResul
 	return response
 }
 
-// handleError creates an error response
+// handleError creates an error response with hierarchical context
 func (s *Service) handleError(message, sessionID string) *WebResponse {
 	return &WebResponse{
-		Content:   "I'm sorry, I encountered an error processing your request.",
-		SessionID: sessionID,
-		Error:     message,
+		Content:        "I'm sorry, I encountered an error processing your request.",
+		SessionID:      sessionID,
+		ConversationID: "", // Error responses may not have conversation context
+		Error:          message,
 	}
 }
 
 // Utility functions for ID generation
 func generateMessageID() string {
 	return uuid.New().String()
+}
+
+// GetConversationContext retrieves complete context from graph using only conversation ID
+// This implements the graph-native approach instead of passing redundant IDs
+func (s *Service) GetConversationContext(ctx context.Context, conversationID string) (*conversationApp.ConversationContext, error) {
+	// GREEN phase: Minimal implementation to make tests pass
+	// Delegate to conversation service which will query the graph
+	return s.conversationService.GetConversationContext(ctx, conversationID)
+}
+
+// ProcessMessageGraphNative processes a message using only conversation ID and graph traversal
+// This eliminates the anti-pattern of passing multiple redundant IDs
+func (s *Service) ProcessMessageGraphNative(ctx context.Context, conversationID, message string) (*WebResponse, error) {
+	// GREEN phase: Minimal implementation to make tests pass
+
+	// Get full context from graph using conversation ID
+	context, err := s.GetConversationContext(ctx, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get conversation context: %w", err)
+	}
+
+	// Create orchestrator request with context derived from graph
+	request := &orchestratorApp.OrchestratorRequest{
+		UserInput:      message,
+		UserID:         context.UserID,
+		ConversationID: conversationID,
+		// Note: No need to pass session/project IDs - orchestrator can query graph if needed
+	}
+
+	// Process through orchestrator
+	result, err := s.orchestrator.ProcessUserRequest(ctx, request)
+	if err != nil {
+		return nil, fmt.Errorf("orchestrator failed: %w", err)
+	}
+
+	// Build response with context from graph
+	return &WebResponse{
+		Content:        result.Message,
+		ConversationID: conversationID,
+		SessionID:      context.SessionID,
+		ProjectID:      context.ProjectID,
+		// Future: Add TenantID when tenant layer is implemented
+	}, nil
 }
 
 func generateUserID(sessionID string) string {

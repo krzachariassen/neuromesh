@@ -121,12 +121,16 @@ func (r *ResponseParser) ExtractRequiredAgents(analysis string) []string {
 		agentParts := strings.Split(agentsStr, ",")
 		for _, agent := range agentParts {
 			agent = strings.TrimSpace(agent)
+			// Remove quotes if present
+			agent = strings.Trim(agent, `"'`)
 			if agent != "" && agent != "none" && agent != "None" {
 				agents = append(agents, agent)
 			}
 		}
 	} else {
 		// Single agent
+		// Remove quotes if present
+		agentsStr = strings.Trim(agentsStr, `"'`)
 		if agentsStr != "none" && agentsStr != "None" {
 			agents = append(agents, agentsStr)
 		}
