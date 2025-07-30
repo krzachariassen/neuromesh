@@ -8,10 +8,10 @@ import (
 
 // DomainEvent represents a structured domain event with metadata
 type DomainEvent struct {
-	EventType string          `json:"event_type"`
-	EventData json.RawMessage `json:"event_data"`
+	EventType string                 `json:"event_type"`
+	EventData json.RawMessage        `json:"event_data"`
 	Metadata  map[string]interface{} `json:"metadata"`
-	Timestamp time.Time       `json:"timestamp"`
+	Timestamp time.Time              `json:"timestamp"`
 }
 
 // UnmarshalEventData unmarshals the event data into the provided struct
@@ -23,10 +23,10 @@ func (de *DomainEvent) UnmarshalEventData(v interface{}) error {
 type DomainEventBus interface {
 	// PublishDomainEvent publishes a domain event with clean interface
 	PublishDomainEvent(ctx context.Context, eventType string, event interface{}) error
-	
+
 	// SubscribeToDomainEvents subscribes to domain events matching pattern
 	SubscribeToDomainEvents(ctx context.Context, subscriberID, eventPattern string) (<-chan *DomainEvent, error)
-	
+
 	// Close cleans up resources
 	Close() error
 }
@@ -54,7 +54,7 @@ type MessageBus interface {
 
 	// PrepareAgentQueue ensures queue and routing are set up for an agent without starting consumption
 	PrepareAgentQueue(ctx context.Context, agentID string) error
-	
+
 	// Domain event support - extend existing MessageBus with domain events
 	DomainEventBus
 }

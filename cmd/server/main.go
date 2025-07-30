@@ -108,6 +108,7 @@ func main() {
 	// Get conversation and user services from service factory for conversation persistence
 	conversationService := serviceFactory.GetConversationService()
 	userService := serviceFactory.GetUserService()
+	projectService := serviceFactory.GetProjectService()
 
 	// Ensure service factory is properly shut down
 	defer func() {
@@ -140,6 +141,7 @@ func main() {
 		orchestratorAdapter,
 		conversationService,
 		userService,
+		projectService,
 		productionGraph,
 		conversationGraphService, // Inject the graph service abstraction
 		logger,

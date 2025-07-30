@@ -1,5 +1,3 @@
-Every time you learn something, add it to your memory so you never forget it.
-
 Always use the TDD Enforcement Protocol for all code changes.
 TDD Checklist (I will follow this religiously):
  - RED: Write failing tests that expose design flaws
@@ -41,3 +39,5 @@ Always apply YAGNI principles:
 - Keep code simple and focused on current needs
 - Refactor only when necessary, not preemptively
 - Write tests for current functionality, not future features
+
+Every time you learn something, add it to your memory so you never forget it.

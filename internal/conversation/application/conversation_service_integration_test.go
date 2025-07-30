@@ -44,6 +44,36 @@ func TestConversationService_GetConversationContext_Integration(t *testing.T) {
 		// Verify repository was called
 		mockRepo.AssertExpectations(t)
 	})
+
+	t.Run("should_link_conversation_to_project_in_graph", func(t *testing.T) {
+		// RED: This test should FAIL initially to prove we're not linking to projects
+		mockRepo := &MockConversationRepository{}
+		service := NewConversationService(mockRepo)
+		ctx := context.Background()
+
+		conversationID := "test-conv-123"
+		sessionID := "session-456"
+		userID := "user-789"
+		projectID := "project-abc"
+
+		// Mock the conversation creation
+		mockRepo.On("CreateConversation", ctx, mock.AnythingOfType("*domain.Conversation")).Return(nil)
+		mockRepo.On("LinkConversationToSession", ctx, conversationID, sessionID).Return(nil)
+		mockRepo.On("LinkConversationToUser", ctx, conversationID, userID).Return(nil)
+		// This is the missing call that should cause the test to fail
+		mockRepo.On("LinkConversationToProject", ctx, conversationID, projectID).Return(nil)
+
+		// Act: Create conversation
+		result, err := service.CreateConversation(ctx, conversationID, sessionID, userID, projectID)
+
+		// Assert: Should create conversation successfully (graph-native approach)
+		require.NoError(t, err)
+		assert.Equal(t, conversationID, result.ID)
+		assert.Equal(t, domain.ConversationStatusActive, result.Status)
+
+		// In graph-native architecture, relationships are created separately, not stored as properties
+		mockRepo.AssertExpectations(t)
+	})
 }
 
 // MockConversationRepository provides a mock for the repository interface
@@ -60,7 +90,8 @@ func (m *MockConversationRepository) GetConversationContext(ctx context.Context,
 func (m *MockConversationRepository) EnsureConversationSchema(ctx context.Context) error { return nil }
 func (m *MockConversationRepository) EnsureMessageSchema(ctx context.Context) error      { return nil }
 func (m *MockConversationRepository) CreateConversation(ctx context.Context, conversation *domain.Conversation) error {
-	return nil
+	args := m.Called(ctx, conversation)
+	return args.Error(0)
 }
 func (m *MockConversationRepository) GetConversation(ctx context.Context, conversationID string) (*domain.Conversation, error) {
 	args := m.Called(ctx, conversationID)
@@ -85,10 +116,16 @@ func (m *MockConversationRepository) GetMessagesByRole(ctx context.Context, conv
 	return nil, nil
 }
 func (m *MockConversationRepository) LinkConversationToSession(ctx context.Context, conversationID, sessionID string) error {
-	return nil
+	args := m.Called(ctx, conversationID, sessionID)
+	return args.Error(0)
 }
 func (m *MockConversationRepository) LinkConversationToUser(ctx context.Context, conversationID, userID string) error {
-	return nil
+	args := m.Called(ctx, conversationID, userID)
+	return args.Error(0)
+}
+func (m *MockConversationRepository) LinkConversationToProject(ctx context.Context, conversationID, projectID string) error {
+	args := m.Called(ctx, conversationID, projectID)
+	return args.Error(0)
 }
 func (m *MockConversationRepository) LinkExecutionPlan(ctx context.Context, conversationID, planID string) error {
 	return nil
@@ -99,6 +136,9 @@ func (m *MockConversationRepository) FindConversationsByUser(ctx context.Context
 func (m *MockConversationRepository) FindConversationsBySession(ctx context.Context, sessionID string) ([]*domain.Conversation, error) {
 	return nil, nil
 }
+func (m *MockConversationRepository) FindConversationsByProject(ctx context.Context, projectID string) ([]*domain.Conversation, error) {
+	return nil, nil
+}
 func (m *MockConversationRepository) FindActiveConversations(ctx context.Context) ([]*domain.Conversation, error) {
 	return nil, nil
 }
@@ -106,5 +146,8 @@ func (m *MockConversationRepository) FindConversationsByStatus(ctx context.Conte
 	return nil, nil
 }
 func (m *MockConversationRepository) GetAllConversations(ctx context.Context) ([]*domain.Conversation, error) {
+	return nil, nil
+}
+func (m *MockConversationRepository) GetConversationWithRelationships(ctx context.Context, conversationID string) (*domain.ConversationWithRelationships, error) {
 	return nil, nil
 }

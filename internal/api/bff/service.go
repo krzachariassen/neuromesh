@@ -2,9 +2,11 @@ package bff
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"neuromesh/internal/graph"
 	"neuromesh/internal/logging"
 	orchestratorApp "neuromesh/internal/orchestrator/application"
+	projectApp "neuromesh/internal/project/application"
 	userApp "neuromesh/internal/user/application"
 	userDomain "neuromesh/internal/user/domain"
 
@@ -61,6 +64,7 @@ type Service struct {
 	orchestrator        AIOrchestrator
 	conversationService conversationApp.ConversationService
 	userService         userApp.UserService
+	projectService      projectApp.ProjectService
 	graph               graph.Graph
 	logger              logging.Logger
 	sessions            map[string]*WebSession
@@ -73,6 +77,7 @@ func NewService(
 	orchestrator AIOrchestrator,
 	conversationService conversationApp.ConversationService,
 	userService userApp.UserService,
+	projectService projectApp.ProjectService,
 	graph graph.Graph,
 	logger logging.Logger,
 ) *Service {
@@ -80,6 +85,7 @@ func NewService(
 		orchestrator:        orchestrator,
 		conversationService: conversationService,
 		userService:         userService,
+		projectService:      projectService,
 		graph:               graph,
 		logger:              logger,
 		sessions:            make(map[string]*WebSession),
@@ -95,7 +101,7 @@ func NewService(
 }
 
 // ProcessMessage processes a message through the BFF with hierarchical ID management
-func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string) (*WebResponse, error) {
+func (s *Service) ProcessMessage(ctx context.Context, sessionID, message, projectID string) (*WebResponse, error) {
 	// Validate inputs (allowing sessionID to be empty for auto-generation)
 	if message == "" {
 		return nil, errors.New("message cannot be empty")
@@ -110,28 +116,34 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 	request := &ChatRequest{
 		Message:   message,
 		SessionID: sessionID, // May be empty - will be auto-generated
+		ProjectID: projectID, // Include the project ID from the request
 	}
 
 	s.logger.Debug("Processing web message with conversation persistence",
-		"providedSessionID", sessionID, "message", message)
+		"providedSessionID", sessionID, "message", message, "projectID", projectID)
 
-	// 1. Get or create conversation with hierarchical context (this handles all ID generation)
-	conversation, actualSessionID, _, err := s.getOrCreateConversation(ctx, request)
-	if err != nil {
-		s.logger.Error("Failed to get or create conversation", err, "sessionID", sessionID)
-		return s.handleError("Failed to initialize conversation", actualSessionID), nil
-	}
+	// 1. Ensure sessionID is set (auto-generate if not provided)
+	actualSessionID := s.ensureSessionID(request.SessionID)
 
-	// 2. Ensure user and session exist (using the actual session ID)
+	// 2. Ensure user and session exist FIRST (create User/Session nodes before conversation)
 	user, _, err := s.ensureUserAndSession(ctx, actualSessionID)
 	if err != nil {
 		s.logger.Error("Failed to ensure user and session", err, "sessionID", actualSessionID)
 		return s.handleError("Failed to initialize session", actualSessionID), nil
 	}
 
-	// 3. Add user message to conversation
+	// 3. Update request with actual User/Session IDs for conversation creation
+	request.SessionID = actualSessionID
+	request.UserID = user.ID
 
-	// 3. Add user message to conversation
+	// 4. Get or create conversation with hierarchical context (User/Session nodes now exist for relationships)
+	conversation, err := s.ensureConversation(ctx, request)
+	if err != nil {
+		s.logger.Error("Failed to ensure conversation", err, "sessionID", actualSessionID)
+		return s.handleError("Failed to initialize conversation", actualSessionID), nil
+	}
+
+	// 5. Add user message to conversation
 	userMessageID := generateMessageID()
 	err = s.conversationService.AddMessage(ctx, conversation.ID, userMessageID,
 		conversationDomain.MessageRoleUser, message, nil)
@@ -141,7 +153,7 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 		// Continue processing even if message storage fails
 	}
 
-	// 4. Process through orchestrator using the new hierarchical interface
+	// 6. Process through orchestrator using the new hierarchical interface
 	orchestratorRequest := &orchestratorApp.OrchestratorRequest{
 		UserInput:      message,
 		UserID:         user.ID,
@@ -162,7 +174,7 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 		return s.handleError("Failed to process request", actualSessionID), nil
 	}
 
-	// 5. Add AI response to conversation
+	// 7. Add AI response to conversation
 	assistantMessageID := generateMessageID()
 	assistantMetadata := s.buildAssistantMetadata(aiResponse)
 
@@ -178,8 +190,8 @@ func (s *Service) ProcessMessage(ctx context.Context, sessionID, message string)
 	// should be handled by the orchestrator as part of domain logic,
 	// not by the BFF layer. The BFF should only handle presentation concerns.
 
-	// 6. Build and return web response with hierarchical IDs
-	response := s.buildWebResponse(aiResponse, actualSessionID, conversation.ID, conversation.ProjectID)
+	// 8. Build and return web response with hierarchical IDs
+	response := s.buildWebResponse(aiResponse, actualSessionID, conversation.ID, projectID)
 	s.logger.Debug("Web message processed successfully", "sessionID", actualSessionID, "response", response.Content)
 
 	return response, nil
@@ -197,6 +209,36 @@ func (s *Service) InitializeSchema(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize user schema: %w", err)
 	}
 
+	// Initialize project schema
+	if err := s.projectService.EnsureSchema(ctx); err != nil {
+		return fmt.Errorf("failed to initialize project schema: %w", err)
+	}
+
+	// Ensure default project exists
+	if err := s.ensureDefaultProject(ctx); err != nil {
+		return fmt.Errorf("failed to ensure default project: %w", err)
+	}
+
+	return nil
+}
+
+// ensureDefaultProject ensures that the default project exists in the system
+func (s *Service) ensureDefaultProject(ctx context.Context) error {
+	// Check if default project already exists
+	_, err := s.projectService.GetProject(ctx, "default-project")
+	if err == nil {
+		// Default project already exists
+		return nil
+	}
+
+	// Create default project
+	s.logger.Info("Creating default project for system initialization")
+	_, err = s.projectService.CreateProject(ctx, "default-project", "Default Project", "system@neuromesh.ai")
+	if err != nil {
+		return fmt.Errorf("failed to create default project: %w", err)
+	}
+
+	s.logger.Info("Default project created successfully", "projectID", "default-project")
 	return nil
 }
 
@@ -258,59 +300,86 @@ func (s *Service) getOrCreateSession(sessionID string) *WebSession {
 	return session
 }
 
-// getOrCreateConversation gets or creates a conversation with hierarchical context support
-func (s *Service) getOrCreateConversation(ctx context.Context, request *ChatRequest) (*conversationDomain.Conversation, string, string, error) {
-	// Ensure sessionID is set (auto-generate if not provided)
-	sessionID := s.ensureSessionID(request.SessionID)
-
-	// Generate userID from sessionID for consistency
-	userID := generateUserID(sessionID)
-
-	// Determine projectID (use provided or default)
-	projectID := request.ProjectID
-	if projectID == "" {
-		projectID = "default-project" // Fallback for backward compatibility
+// ensureConversation ensures a conversation exists for the request, following clean architecture principles
+func (s *Service) ensureConversation(ctx context.Context, request *ChatRequest) (*conversationDomain.Conversation, error) {
+	// Validate project exists first
+	if err := s.validateProjectExists(ctx, request.ProjectID); err != nil {
+		return nil, err
 	}
 
-	var conversation *conversationDomain.Conversation
-	var err error
-
+	// Try to get existing conversation if ID is provided
 	if request.ConversationID != "" {
-		// Try to get existing conversation
-		conversation, err = s.conversationService.GetConversation(ctx, request.ConversationID)
-		if err != nil {
-			// Conversation doesn't exist, create new one with the provided ID
-			conversation, err = s.conversationService.CreateConversation(ctx, request.ConversationID, sessionID, userID, projectID)
-			if err != nil {
-				return nil, "", "", fmt.Errorf("failed to create conversation with ID %s: %w", request.ConversationID, err)
-			}
+		conversation, err := s.getConversation(ctx, request.ConversationID)
+		if err == nil {
+			return conversation, nil
 		}
-	} else {
-		// Try to find existing conversation for this session
-		conversations, err := s.conversationService.FindConversationsBySession(ctx, sessionID)
-		if err != nil {
-			return nil, "", "", fmt.Errorf("failed to find conversations for session: %w", err)
-		}
+		// If conversation doesn't exist, create it with the provided ID
+		return s.createConversation(ctx, request.ConversationID, request.SessionID, request.UserID, request.ProjectID)
+	}
 
-		// Find an active conversation
-		for _, conv := range conversations {
-			if conv.Status == conversationDomain.ConversationStatusActive {
-				conversation = conv
-				break
-			}
-		}
+	// Try to find existing active conversation for session
+	conversation, err := s.findActiveConversationBySession(ctx, request.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find conversations by session: %w", err)
+	}
 
-		// No active conversation found, create a new one
-		if conversation == nil {
-			conversationID := generateConversationID()
-			conversation, err = s.conversationService.CreateConversation(ctx, conversationID, sessionID, userID, projectID)
-			if err != nil {
-				return nil, "", "", fmt.Errorf("failed to create conversation: %w", err)
-			}
+	// If found, return it
+	if conversation != nil {
+		return conversation, nil
+	}
+
+	// No active conversation found, create a new one
+	conversationID := generateConversationID()
+	return s.createConversation(ctx, conversationID, request.SessionID, request.UserID, request.ProjectID)
+}
+
+// validateProjectExists validates that a project exists, with fallback to default
+func (s *Service) validateProjectExists(ctx context.Context, projectID string) error {
+	// Use default project if none specified
+	if projectID == "" {
+		projectID = "default-project"
+	}
+
+	_, err := s.projectService.GetProject(ctx, projectID)
+	if err != nil {
+		if projectID == "default-project" {
+			return fmt.Errorf("default project not found - system misconfiguration: %w", err)
+		}
+		return fmt.Errorf("project '%s' not found: %w", projectID, err)
+	}
+	return nil
+}
+
+// getConversation retrieves a conversation by ID
+func (s *Service) getConversation(ctx context.Context, conversationID string) (*conversationDomain.Conversation, error) {
+	return s.conversationService.GetConversation(ctx, conversationID)
+}
+
+// createConversation creates a new conversation with the specified parameters
+func (s *Service) createConversation(ctx context.Context, conversationID, sessionID, userID, projectID string) (*conversationDomain.Conversation, error) {
+	// Use default project if none specified
+	if projectID == "" {
+		projectID = "default-project"
+	}
+
+	return s.conversationService.CreateConversation(ctx, conversationID, sessionID, userID, projectID)
+}
+
+// findActiveConversationBySession finds an active conversation for the given session
+func (s *Service) findActiveConversationBySession(ctx context.Context, sessionID string) (*conversationDomain.Conversation, error) {
+	conversations, err := s.conversationService.FindConversationsBySession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find an active conversation
+	for _, conv := range conversations {
+		if conv.Status == conversationDomain.ConversationStatusActive {
+			return conv, nil
 		}
 	}
 
-	return conversation, sessionID, userID, nil
+	return nil, nil // No active conversation found
 }
 
 // ensureSessionID returns the provided sessionID or generates a new one if empty
@@ -430,4 +499,124 @@ func generateUserID(sessionID string) string {
 
 func generateConversationID() string {
 	return uuid.New().String()
+}
+
+// Project Management Endpoints
+
+// CreateProjectRequest represents a request to create a new project
+type CreateProjectRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	OwnerEmail  string `json:"owner_email"`
+}
+
+// CreateProjectResponse represents the response after creating a project
+type CreateProjectResponse struct {
+	ProjectID   string `json:"project_id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
+}
+
+// CreateProject creates a new project with the given parameters
+func (s *Service) CreateProject(ctx context.Context, request *CreateProjectRequest) (*CreateProjectResponse, error) {
+	// Validate request
+	if request.Name == "" {
+		return nil, errors.New("project name is required")
+	}
+	if request.OwnerEmail == "" {
+		return nil, errors.New("owner email is required")
+	}
+
+	// Generate project ID
+	projectID := fmt.Sprintf("proj_%s", uuid.New().String())
+
+	// Create project through project service
+	project, err := s.projectService.CreateProject(ctx, projectID, request.Name, request.OwnerEmail)
+	if err != nil {
+		s.logger.Error("Failed to create project", err, "projectID", projectID, "name", request.Name)
+		return nil, fmt.Errorf("failed to create project: %w", err)
+	}
+
+	// Update description if provided
+	if request.Description != "" {
+		err = s.projectService.UpdateProjectDescription(ctx, projectID, request.Description)
+		if err != nil {
+			s.logger.Warn("Failed to update project description after creation",
+				"projectID", projectID, "description", request.Description, "error", err)
+			// Continue - project was created successfully
+		}
+	}
+
+	s.logger.Info("Project created successfully", "projectID", projectID, "name", request.Name, "owner", request.OwnerEmail)
+
+	return &CreateProjectResponse{
+		ProjectID:   project.ID,
+		Name:        project.Name,
+		Description: request.Description,
+		Status:      string(project.Status),
+		CreatedAt:   project.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// GetProject retrieves project information by ID
+func (s *Service) GetProject(ctx context.Context, projectID string) (*CreateProjectResponse, error) {
+	project, err := s.projectService.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
+	}
+
+	return &CreateProjectResponse{
+		ProjectID:   project.ID,
+		Name:        project.Name,
+		Description: project.Description,
+		Status:      string(project.Status),
+		CreatedAt:   project.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// HTTP Handlers for Project Management
+
+// CreateProjectHandler returns an HTTP handler for creating projects
+func (s *Service) CreateProjectHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request CreateProjectRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		response, err := s.CreateProject(r.Context(), &request)
+		if err != nil {
+			s.logger.Error("Failed to create project", err)
+			http.Error(w, "Failed to create project", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// GetProjectHandler returns an HTTP handler for getting projects
+func (s *Service) GetProjectHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract project ID from URL path
+		projectID := strings.TrimPrefix(r.URL.Path, "/api/projects/")
+		if projectID == "" {
+			http.Error(w, "Project ID required", http.StatusBadRequest)
+			return
+		}
+
+		response, err := s.GetProject(r.Context(), projectID)
+		if err != nil {
+			s.logger.Error("Failed to get project", err, "projectID", projectID)
+			http.Error(w, "Project not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
 }

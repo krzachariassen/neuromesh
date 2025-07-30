@@ -15,6 +15,8 @@ import (
 	"neuromesh/internal/orchestrator/infrastructure"
 	planningApp "neuromesh/internal/planning/application"
 	planningInfra "neuromesh/internal/planning/infrastructure"
+	projectApp "neuromesh/internal/project/application"
+	projectInfra "neuromesh/internal/project/infrastructure"
 	userApp "neuromesh/internal/user/application"
 	userInfra "neuromesh/internal/user/infrastructure"
 )
@@ -32,6 +34,7 @@ type ServiceFactory struct {
 	// Conversation services
 	conversationService conversationApp.ConversationService
 	userService         userApp.UserService
+	projectService      projectApp.ProjectService
 	shutdownContext     context.Context
 	shutdownCancel      context.CancelFunc
 	started             bool // Track startup state to prevent double-start
@@ -58,26 +61,28 @@ func NewServiceFactory(
 	if messageBus != nil && graph != nil {
 		aiMessageBus = messaging.NewAIMessageBus(messageBus, graph, logger)
 		globalMessageConsumer = infrastructure.NewGlobalMessageConsumer(aiMessageBus, correlationTracker)
-		
+
 		// Create synthesis event handler using clean MessageBus domain events
 		executionPlanRepo := planningInfra.NewGraphExecutionPlanRepository(graph)
 		resultSynthesizer := executionApp.NewAIResultSynthesizer(aiProvider, executionPlanRepo)
-		coordinator := executionApp.NewExecutionCoordinator(executionPlanRepo, resultSynthesizer)
-		synthesisEventHandler = executionApp.NewSynthesisEventHandler(coordinator, messageBus, executionPlanRepo, resultSynthesizer)
+		synthesisEventHandler = executionApp.NewSynthesisEventHandler(messageBus, executionPlanRepo, resultSynthesizer)
 	}
 
 	// Create conversation and user services
 	var conversationService conversationApp.ConversationService
 	var userService userApp.UserService
+	var projectService projectApp.ProjectService
 
 	if graph != nil {
 		// Create repositories
 		userRepo := userInfra.NewGraphUserRepository(graph)
 		conversationRepo := conversationInfra.NewGraphConversationRepository(graph)
+		projectRepo := projectInfra.NewGraphProjectRepository(graph)
 
 		// Create services
 		userService = userApp.NewUserService(userRepo)
 		conversationService = conversationApp.NewConversationService(conversationRepo)
+		projectService = projectApp.NewProjectService(projectRepo)
 	}
 
 	return &ServiceFactory{
@@ -91,6 +96,7 @@ func NewServiceFactory(
 		synthesisEventHandler: synthesisEventHandler,
 		conversationService:   conversationService,
 		userService:           userService,
+		projectService:        projectService,
 		shutdownContext:       shutdownCtx,
 		shutdownCancel:        shutdownCancel,
 	}
@@ -197,4 +203,9 @@ func (sf *ServiceFactory) GetUserService() userApp.UserService {
 // GetConversationService returns the conversation service instance
 func (sf *ServiceFactory) GetConversationService() conversationApp.ConversationService {
 	return sf.conversationService
+}
+
+// GetProjectService returns the project service instance
+func (sf *ServiceFactory) GetProjectService() projectApp.ProjectService {
+	return sf.projectService
 }

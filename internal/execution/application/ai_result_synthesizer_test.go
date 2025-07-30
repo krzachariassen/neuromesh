@@ -65,6 +65,12 @@ func TestAIResultSynthesizer(t *testing.T) {
 
 		// Verify it's a cohesive response, not just concatenated results
 		assert.Greater(t, len(synthesizedResult), 100, "Should be a substantial synthesized response")
+
+		// TDD: Verify that synthesis result was stored in the graph database
+		mockRepo.AssertStoreSynthesisResultCalled(t, planID)
+
+		// CRITICAL: Verify that synthesis result was stored in the graph database
+		mockRepo.AssertStoreSynthesisResultCalled(t, planID)
 	})
 
 	t.Run("should_get_synthesis_context", func(t *testing.T) {
@@ -173,6 +179,12 @@ func TestAIResultSynthesizer(t *testing.T) {
 		// Should acknowledge both success and failure
 		assert.Contains(t, synthesizedResult, "collected", "Should mention successful data collection")
 		assert.Contains(t, synthesizedResult, "analysis", "Should address analysis issue")
+
+		// TDD: Verify that synthesis result was stored even with partial results
+		mockRepo.AssertStoreSynthesisResultCalled(t, planID)
+
+		// CRITICAL: Verify that synthesis result was stored even with partial results
+		mockRepo.AssertStoreSynthesisResultCalled(t, planID)
 	})
 }
 

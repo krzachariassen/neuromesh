@@ -124,11 +124,11 @@ func (r *RabbitMQEventRouter) SubscribeToEvents(ctx context.Context, exchange, q
 
 	// Bind queue to exchange with routing key pattern
 	err = r.channel.QueueBind(
-		queue.Name,  // queue name
-		routingKey,  // routing key pattern
-		exchange,    // exchange
-		false,       // no-wait
-		nil,         // arguments
+		queue.Name, // queue name
+		routingKey, // routing key pattern
+		exchange,   // exchange
+		false,      // no-wait
+		nil,        // arguments
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind queue %s to exchange %s with routing key %s: %w", queueName, exchange, routingKey, err)

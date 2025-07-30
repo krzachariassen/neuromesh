@@ -84,6 +84,9 @@ func (r *Router) registerRoutes() {
 	// REST API v1 routes
 	r.registerRESTRoutes()
 
+	// Project management routes
+	r.registerProjectRoutes()
+
 	// BFF routes (chat and websocket)
 	r.registerBFFRoutes()
 
@@ -172,4 +175,30 @@ func (r *Router) registerUtilityRoutes() {
 	})
 
 	r.logger.Info("Utility routes registered", "endpoints", []string{"/health", "/api"})
+}
+
+// registerProjectRoutes registers project management routes
+func (r *Router) registerProjectRoutes() {
+	// Create project endpoint
+	r.mux.HandleFunc("/api/projects", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPost {
+			r.bffService.CreateProjectHandler()(w, req)
+			return
+		}
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	})
+
+	// Get project endpoint
+	r.mux.HandleFunc("/api/projects/", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodGet {
+			r.bffService.GetProjectHandler()(w, req)
+			return
+		}
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	})
+
+	r.logger.Info("Project routes registered", "endpoints", []string{
+		"POST /api/projects",
+		"GET /api/projects/{id}",
+	})
 }

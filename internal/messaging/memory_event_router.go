@@ -35,7 +35,7 @@ func NewMemoryEventRouter() *MemoryEventRouter {
 func (r *MemoryEventRouter) SetupEventExchange(ctx context.Context, exchangeName string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	r.exchanges[exchangeName] = true
 	return nil
 }
@@ -44,18 +44,18 @@ func (r *MemoryEventRouter) SetupEventExchange(ctx context.Context, exchangeName
 func (r *MemoryEventRouter) PublishEvent(ctx context.Context, exchange, routingKey string, event interface{}) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	// Check if exchange exists
 	if !r.exchanges[exchange] {
 		return fmt.Errorf("exchange %s does not exist", exchange)
 	}
-	
+
 	// Marshal event data
 	eventData, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
-	
+
 	// Create event message
 	eventMsg := EventMessage{
 		Exchange:   exchange,
@@ -65,7 +65,7 @@ func (r *MemoryEventRouter) PublishEvent(ctx context.Context, exchange, routingK
 		Metadata:   make(map[string]interface{}),
 		Timestamp:  time.Now().UTC(),
 	}
-	
+
 	// Send to matching subscribers
 	for _, subscriptions := range r.subscribers {
 		for _, sub := range subscriptions {
@@ -80,7 +80,7 @@ func (r *MemoryEventRouter) PublishEvent(ctx context.Context, exchange, routingK
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -88,15 +88,15 @@ func (r *MemoryEventRouter) PublishEvent(ctx context.Context, exchange, routingK
 func (r *MemoryEventRouter) SubscribeToEvents(ctx context.Context, exchange, queueName, routingKey string) (<-chan EventMessage, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	// Check if exchange exists
 	if !r.exchanges[exchange] {
 		return nil, fmt.Errorf("exchange %s does not exist", exchange)
 	}
-	
+
 	// Create channel for events
 	eventChan := make(chan EventMessage, 100) // Buffered channel
-	
+
 	// Create subscription
 	subscription := eventSubscription{
 		exchange:   exchange,
@@ -104,11 +104,11 @@ func (r *MemoryEventRouter) SubscribeToEvents(ctx context.Context, exchange, que
 		routingKey: routingKey,
 		channel:    eventChan,
 	}
-	
+
 	// Store subscription - use exchange as key since we iterate all subscriptions anyway
 	key := exchange
 	r.subscribers[key] = append(r.subscribers[key], subscription)
-	
+
 	return eventChan, nil
 }
 
@@ -116,18 +116,18 @@ func (r *MemoryEventRouter) SubscribeToEvents(ctx context.Context, exchange, que
 func (r *MemoryEventRouter) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	// Close all subscription channels
 	for _, subscriptions := range r.subscribers {
 		for _, sub := range subscriptions {
 			close(sub.channel)
 		}
 	}
-	
+
 	// Clear state
 	r.exchanges = make(map[string]bool)
 	r.subscribers = make(map[string][]eventSubscription)
-	
+
 	return nil
 }
 

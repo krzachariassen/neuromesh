@@ -46,14 +46,14 @@ type RabbitMQConfig struct {
 // NewRabbitMQMessageBus creates a new RabbitMQ-based message bus
 func NewRabbitMQMessageBus(config RabbitMQConfig, logger logging.Logger) *RabbitMQMessageBus {
 	return &RabbitMQMessageBus{
-		url:             config.URL,
-		logger:          logger,
-		reconnectDelay:  config.ReconnectDelay,
-		maxReconnects:   config.MaxReconnects,
-		agentExchange:   "agent.messages",
-		dlxExchange:     "agent.messages.dlx",
-		eventsExchange:  "domain.events",
-		consumerTags:    make(map[string]string),
+		url:            config.URL,
+		logger:         logger,
+		reconnectDelay: config.ReconnectDelay,
+		maxReconnects:  config.MaxReconnects,
+		agentExchange:  "agent.messages",
+		dlxExchange:    "agent.messages.dlx",
+		eventsExchange: "domain.events",
+		consumerTags:   make(map[string]string),
 	}
 }
 
@@ -460,7 +460,7 @@ func (rmq *RabbitMQMessageBus) SubscribeToDomainEvents(ctx context.Context, subs
 
 	// Create a unique queue for this subscriber
 	queueName := fmt.Sprintf("events.%s.%s", subscriberID, uuid.New().String()[:8])
-	
+
 	queue, err := rmq.channel.QueueDeclare(
 		queueName, // name
 		false,     // durable - temporary queue
@@ -487,13 +487,13 @@ func (rmq *RabbitMQMessageBus) SubscribeToDomainEvents(ctx context.Context, subs
 
 	// Start consuming
 	msgs, err := rmq.channel.Consume(
-		queue.Name,  // queue
+		queue.Name,   // queue
 		subscriberID, // consumer tag
-		true,        // auto-ack for events
-		true,        // exclusive
-		false,       // no-local
-		false,       // no-wait
-		nil,         // args
+		true,         // auto-ack for events
+		true,         // exclusive
+		false,        // no-local
+		false,        // no-wait
+		nil,          // args
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to consume events: %w", err)
@@ -506,7 +506,7 @@ func (rmq *RabbitMQMessageBus) SubscribeToDomainEvents(ctx context.Context, subs
 
 	// Convert delivery channel to domain event channel
 	eventsChan := make(chan *DomainEvent, 10)
-	
+
 	go func() {
 		defer close(eventsChan)
 		defer func() {

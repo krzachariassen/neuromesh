@@ -79,6 +79,9 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 		mockPlanningEngine.On("LinkPlanningResultToConversation", ctx, "planning-001", "conv-001").Return(nil)
 		mockConversationService.On("LinkExecutionPlan", ctx, "conv-001", "exec-plan-001").Return(nil)
 
+		// Mock the background execution that happens after returning the response
+		mockExecutionEngine.On("ExecuteWithAgents", mock.Anything, mock.AnythingOfType("string"), "What is the weather like today?", "user-123", "Available agents: generic-agent", "exec-plan-001").Return("Execution completed", nil)
+
 		// Create orchestrator with Phase 3 pure orchestration
 		orchestrator := NewOrchestratorService(
 			mockPlanningEngine,

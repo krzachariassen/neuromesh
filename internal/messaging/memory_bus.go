@@ -20,12 +20,12 @@ type MemoryMessageBus struct {
 	subscribers   map[string]chan *Message
 	conversations map[string]*ConversationContext
 	history       map[string][]*Message
-	
+
 	// Domain event support
 	eventSubscribers map[string]chan *DomainEvent
-	
-	mutex         sync.RWMutex
-	logger        logging.Logger
+
+	mutex  sync.RWMutex
+	logger logging.Logger
 }
 
 // NewMemoryMessageBus creates a new in-memory message bus
@@ -204,14 +204,14 @@ func (mb *MemoryMessageBus) PublishDomainEvent(ctx context.Context, eventType st
 func (mb *MemoryMessageBus) SubscribeToDomainEvents(ctx context.Context, subscriberID, eventPattern string) (<-chan *DomainEvent, error) {
 	mb.mutex.Lock()
 	defer mb.mutex.Unlock()
-	
+
 	// Create buffered channel for events
 	eventChan := make(chan *DomainEvent, 100)
-	
+
 	// Store subscription with pattern key
 	key := fmt.Sprintf("%s:%s", subscriberID, eventPattern)
 	mb.eventSubscribers[key] = eventChan
-	
+
 	return eventChan, nil
 }
 
@@ -222,20 +222,20 @@ func (mb *MemoryMessageBus) eventPatternMatches(subscriberKey, eventType string)
 	if len(parts) != 2 {
 		return false
 	}
-	
+
 	pattern := parts[1]
-	
+
 	// Simple pattern matching - supports exact match and wildcard patterns
 	if pattern == eventType {
 		return true
 	}
-	
+
 	// Support simple wildcard patterns like "execution.*"
 	if strings.HasSuffix(pattern, "*") {
 		prefix := strings.TrimSuffix(pattern, "*")
 		return strings.HasPrefix(eventType, prefix)
 	}
-	
+
 	// Support filepath-style pattern matching
 	matched, _ := filepath.Match(pattern, eventType)
 	return matched
@@ -245,20 +245,20 @@ func (mb *MemoryMessageBus) eventPatternMatches(subscriberKey, eventType string)
 func (mb *MemoryMessageBus) Close() error {
 	mb.mutex.Lock()
 	defer mb.mutex.Unlock()
-	
+
 	// Close all subscription channels
 	for _, ch := range mb.subscribers {
 		close(ch)
 	}
-	
+
 	// Close all event subscription channels
 	for _, ch := range mb.eventSubscribers {
 		close(ch)
 	}
-	
+
 	// Clear maps
 	mb.subscribers = make(map[string]chan *Message)
 	mb.eventSubscribers = make(map[string]chan *DomainEvent)
-	
+
 	return nil
 }

@@ -11,6 +11,39 @@ type ConversationContextData struct {
 	ProjectName    string
 }
 
+// ConversationWithRelationships represents a conversation with all its related entities loaded
+type ConversationWithRelationships struct {
+	Conversation   *Conversation
+	User           *UserInfo
+	Session        *SessionInfo
+	Project        *ProjectInfo
+	ExecutionPlans []*ExecutionPlanInfo
+}
+
+// UserInfo represents user information for conversation context
+type UserInfo struct {
+	ID    string
+	Email string
+}
+
+// SessionInfo represents session information for conversation context
+type SessionInfo struct {
+	ID     string
+	Status string
+}
+
+// ProjectInfo represents project information for conversation context
+type ProjectInfo struct {
+	ID   string
+	Name string
+}
+
+// ExecutionPlanInfo represents execution plan information for conversation context
+type ExecutionPlanInfo struct {
+	ID     string
+	Status string
+}
+
 // ConversationRepository defines the interface for conversation persistence operations
 type ConversationRepository interface {
 	// Schema management
@@ -32,15 +65,18 @@ type ConversationRepository interface {
 	// Relationship operations
 	LinkConversationToSession(ctx context.Context, conversationID, sessionID string) error
 	LinkConversationToUser(ctx context.Context, conversationID, userID string) error
+	LinkConversationToProject(ctx context.Context, conversationID, projectID string) error
 	LinkExecutionPlan(ctx context.Context, conversationID, planID string) error
 
 	// Query operations
 	FindConversationsByUser(ctx context.Context, userID string) ([]*Conversation, error)
 	FindConversationsBySession(ctx context.Context, sessionID string) ([]*Conversation, error)
+	FindConversationsByProject(ctx context.Context, projectID string) ([]*Conversation, error)
 	FindActiveConversations(ctx context.Context) ([]*Conversation, error)
 	FindConversationsByStatus(ctx context.Context, status ConversationStatus) ([]*Conversation, error)
 	GetAllConversations(ctx context.Context) ([]*Conversation, error)
 
 	// Graph traversal operations for context
 	GetConversationContext(ctx context.Context, conversationID string) (*ConversationContextData, error)
+	GetConversationWithRelationships(ctx context.Context, conversationID string) (*ConversationWithRelationships, error)
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	executionDomain "neuromesh/internal/execution/domain"
+	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
 	"neuromesh/internal/orchestrator/infrastructure"
 	"neuromesh/testHelpers"
@@ -19,12 +20,13 @@ func TestAIExecutionEngine_AgentResultStorage(t *testing.T) {
 	t.Run("should_have_repository_when_configured", func(t *testing.T) {
 		// Setup: Create AI execution engine with repository dependency
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()
-		mockMessageBus := testHelpers.NewMockAIMessageBus()
+		mockAIMessageBus := testHelpers.NewMockAIMessageBus()
+		memoryMessageBus := messaging.NewMemoryMessageBus(logging.NewNoOpLogger())
 		realAIProvider := testHelpers.SetupRealAIProvider(t) // Use real AI provider for authentic testing
 		correlationTracker := &infrastructure.CorrelationTracker{}
 
 		// Test that constructor with repository works
-		engine := NewAIExecutionEngine(realAIProvider, mockMessageBus, correlationTracker, mockRepo)
+		engine := NewAIExecutionEngine(realAIProvider, mockAIMessageBus, correlationTracker, mockRepo, memoryMessageBus)
 		require.NotNil(t, engine)
 
 		// Verify repository is set by checking if it's accessible (indirect verification)
@@ -35,11 +37,12 @@ func TestAIExecutionEngine_AgentResultStorage(t *testing.T) {
 	t.Run("should_store_agent_result_when_processing_response", func(t *testing.T) {
 		// Setup
 		mockRepo := testHelpers.NewMockExecutionPlanRepository()
-		mockMessageBus := testHelpers.NewMockAIMessageBus()
+		mockAIMessageBus := testHelpers.NewMockAIMessageBus()
+		memoryMessageBus := messaging.NewMemoryMessageBus(logging.NewNoOpLogger())
 		realAIProvider := testHelpers.SetupRealAIProvider(t) // Use real AI provider for authentic testing
 		correlationTracker := &infrastructure.CorrelationTracker{}
 
-		engine := NewAIExecutionEngine(realAIProvider, mockMessageBus, correlationTracker, mockRepo)
+		engine := NewAIExecutionEngine(realAIProvider, mockAIMessageBus, correlationTracker, mockRepo, memoryMessageBus)
 
 		// Create a mock agent response
 		agentResponse := &messaging.AgentToAIMessage{

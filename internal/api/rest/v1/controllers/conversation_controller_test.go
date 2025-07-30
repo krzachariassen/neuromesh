@@ -22,10 +22,9 @@ func TestConversationController_GetConversation(t *testing.T) {
 
 	conversationID := "test-conversation-id"
 	expectedConversation := &convDomain.Conversation{
-		ID:        conversationID,
-		SessionID: "test-session",
-		UserID:    "test-user",
-		Status:    convDomain.ConversationStatusActive,
+		ID:     conversationID,
+		Status: convDomain.ConversationStatusActive,
+		// Note: SessionID and UserID are now handled via graph relationships, not entity properties
 	}
 
 	mockConversationService.On("GetConversation", context.Background(), conversationID).

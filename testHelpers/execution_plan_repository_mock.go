@@ -327,3 +327,21 @@ func (m *MockExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Con
 	// Mock returns nil - no synthesis result found
 	return nil, nil
 }
+
+// AssertStoreSynthesisResultCalled verifies that StoreSynthesisResult was called for the given planID
+func (m *MockExecutionPlanRepository) AssertStoreSynthesisResultCalled(t interface {
+	Errorf(format string, args ...interface{})
+}, planID string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	expectedCall := fmt.Sprintf("StoreSynthesisResult(%s)", planID)
+	for _, call := range m.calls {
+		if call == expectedCall {
+			return // Found the call, assertion passes
+		}
+	}
+
+	// Call not found, assertion fails
+	t.Errorf("Expected StoreSynthesisResult to be called with planID '%s', but it was not. Recorded calls: %v", planID, m.calls)
+}

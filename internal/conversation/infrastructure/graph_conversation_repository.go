@@ -85,17 +85,14 @@ func (r *GraphConversationRepository) EnsureMessageSchema(ctx context.Context) e
 	return nil
 }
 
-// CreateConversation creates a conversation node in the graph
+// CreateConversation creates a conversation node in the graph without embedded foreign keys
 func (r *GraphConversationRepository) CreateConversation(ctx context.Context, conversation *domain.Conversation) error {
+	// Graph-native: Only store essential conversation properties, relationships are handled separately
 	properties := map[string]interface{}{
-		"id":                 conversation.ID,
-		"session_id":         conversation.SessionID,
-		"user_id":            conversation.UserID,
-		"project_id":         conversation.ProjectID,
-		"status":             string(conversation.Status),
-		"execution_plan_ids": conversation.ExecutionPlanIDs,
-		"created_at":         formatTime(conversation.CreatedAt),
-		"updated_at":         formatTime(conversation.UpdatedAt),
+		"id":         conversation.ID,
+		"status":     string(conversation.Status),
+		"created_at": formatTime(conversation.CreatedAt),
+		"updated_at": formatTime(conversation.UpdatedAt),
 	}
 
 	return r.graph.AddNode(ctx, NodeTypeConversation, conversation.ID, properties)
@@ -133,14 +130,12 @@ func (r *GraphConversationRepository) GetConversationWithMessages(ctx context.Co
 	return conversation, nil
 }
 
-// UpdateConversation updates a conversation node in the graph
+// UpdateConversation updates a conversation node in the graph (graph-native approach)
 func (r *GraphConversationRepository) UpdateConversation(ctx context.Context, conversation *domain.Conversation) error {
+	// Graph-native: Only update essential conversation properties, relationships are managed separately
 	properties := map[string]interface{}{
-		"session_id":         conversation.SessionID,
-		"user_id":            conversation.UserID,
-		"status":             string(conversation.Status),
-		"execution_plan_ids": conversation.ExecutionPlanIDs,
-		"updated_at":         formatTime(conversation.UpdatedAt),
+		"status":     string(conversation.Status),
+		"updated_at": formatTime(conversation.UpdatedAt),
 	}
 
 	return r.graph.UpdateNode(ctx, NodeTypeConversation, conversation.ID, properties)
@@ -251,6 +246,17 @@ func (r *GraphConversationRepository) LinkConversationToUser(ctx context.Context
 	return r.graph.AddEdge(ctx, "User", userID, NodeTypeConversation, conversationID, RelationshipParticipantIn, properties)
 }
 
+// LinkConversationToProject creates a relationship between conversation and project
+func (r *GraphConversationRepository) LinkConversationToProject(ctx context.Context, conversationID, projectID string) error {
+	properties := map[string]interface{}{
+		"created_at": formatTime(time.Now().UTC()),
+	}
+
+	// Link conversation to project using BELONGS_TO relationship
+	// CRITICAL: Use "Project" (capital P) to match the project domain node type
+	return r.graph.AddEdge(ctx, NodeTypeConversation, conversationID, "Project", projectID, "BELONGS_TO", properties)
+}
+
 // LinkExecutionPlan creates a relationship between conversation and execution plan
 func (r *GraphConversationRepository) LinkExecutionPlan(ctx context.Context, conversationID, planID string) error {
 	properties := map[string]interface{}{
@@ -261,50 +267,212 @@ func (r *GraphConversationRepository) LinkExecutionPlan(ctx context.Context, con
 	return r.graph.AddEdge(ctx, NodeTypeConversation, conversationID, "execution_plan", planID, RelationshipLinkedToPlan, properties)
 }
 
-// FindConversationsByUser finds conversations by user ID
+// FindConversationsByUser finds conversations by user ID using graph relationships (graph-native)
 func (r *GraphConversationRepository) FindConversationsByUser(ctx context.Context, userID string) ([]*domain.Conversation, error) {
-	filters := map[string]interface{}{
-		"user_id": userID,
+	// Type assert to get Neo4j driver access for direct Cypher queries
+	neo4jGraph, ok := r.graph.(*graph.Neo4jGraph)
+	if !ok {
+		return nil, fmt.Errorf("FindConversationsByUser requires Neo4j graph implementation")
 	}
 
-	conversationProps, err := r.graph.QueryNodes(ctx, NodeTypeConversation, filters)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query conversations by user: %w", err)
-	}
+	driver := neo4jGraph.Driver()
+	session := driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
 
-	conversations := make([]*domain.Conversation, len(conversationProps))
-	for i, props := range conversationProps {
-		conversation, err := r.mapToConversation(props)
+	// Cypher query to traverse relationships and find conversations for user
+	query := `
+		MATCH (u:User {id: $userID})-[:PARTICIPANT_IN]->(c:Conversation)
+		RETURN c.id as id, c.status as status, c.created_at as created_at, c.updated_at as updated_at
+		ORDER BY c.created_at DESC
+	`
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, map[string]interface{}{
+			"userID": userID,
+		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to map conversation properties: %w", err)
+			return nil, err
 		}
-		conversations[i] = conversation
+
+		var conversations []*domain.Conversation
+		for result.Next(ctx) {
+			record := result.Record()
+
+			// Extract conversation properties
+			id := record.Values[0].(string)
+			status := record.Values[1].(string)
+			createdAtStr := record.Values[2].(string)
+			updatedAtStr := record.Values[3].(string)
+
+			// Parse timestamps
+			createdAt, err := parseTime(createdAtStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse created_at: %w", err)
+			}
+
+			updatedAt, err := parseTime(updatedAtStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse updated_at: %w", err)
+			}
+
+			// Create conversation object
+			conversation := &domain.Conversation{
+				ID:        id,
+				Status:    domain.ConversationStatus(status),
+				Messages:  make([]domain.ConversationMessage, 0),
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			}
+
+			conversations = append(conversations, conversation)
+		}
+
+		return conversations, result.Err()
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to find conversations by user: %w", err)
 	}
 
-	return conversations, nil
+	return result.([]*domain.Conversation), nil
+} // FindConversationsBySession finds conversations by session ID using graph relationships (graph-native)
+func (r *GraphConversationRepository) FindConversationsBySession(ctx context.Context, sessionID string) ([]*domain.Conversation, error) {
+	// Type assert to get Neo4j driver access for direct Cypher queries
+	neo4jGraph, ok := r.graph.(*graph.Neo4jGraph)
+	if !ok {
+		return nil, fmt.Errorf("FindConversationsBySession requires Neo4j graph implementation")
+	}
+
+	driver := neo4jGraph.Driver()
+	session := driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	// Cypher query to traverse relationships and find conversations for session
+	query := `
+		MATCH (s:Session {id: $sessionID})-[:IN_SESSION]-(c:Conversation)
+		RETURN c.id as id, c.status as status, c.created_at as created_at, c.updated_at as updated_at
+		ORDER BY c.created_at DESC
+	`
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, map[string]interface{}{
+			"sessionID": sessionID,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		var conversations []*domain.Conversation
+		for result.Next(ctx) {
+			record := result.Record()
+
+			// Extract conversation properties
+			id := record.Values[0].(string)
+			status := record.Values[1].(string)
+			createdAtStr := record.Values[2].(string)
+			updatedAtStr := record.Values[3].(string)
+
+			// Parse timestamps
+			createdAt, err := parseTime(createdAtStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse created_at: %w", err)
+			}
+
+			updatedAt, err := parseTime(updatedAtStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse updated_at: %w", err)
+			}
+
+			// Create conversation object
+			conversation := &domain.Conversation{
+				ID:        id,
+				Status:    domain.ConversationStatus(status),
+				Messages:  make([]domain.ConversationMessage, 0),
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			}
+
+			conversations = append(conversations, conversation)
+		}
+
+		return conversations, result.Err()
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to find conversations by session: %w", err)
+	}
+
+	return result.([]*domain.Conversation), nil
 }
 
-// FindConversationsBySession finds conversations by session ID
-func (r *GraphConversationRepository) FindConversationsBySession(ctx context.Context, sessionID string) ([]*domain.Conversation, error) {
-	filters := map[string]interface{}{
-		"session_id": sessionID,
+// FindConversationsByProject finds conversations by project ID using graph relationships (graph-native)
+func (r *GraphConversationRepository) FindConversationsByProject(ctx context.Context, projectID string) ([]*domain.Conversation, error) {
+	// Type assert to get Neo4j driver access for direct Cypher queries
+	neo4jGraph, ok := r.graph.(*graph.Neo4jGraph)
+	if !ok {
+		return nil, fmt.Errorf("FindConversationsByProject requires Neo4j graph implementation")
 	}
 
-	conversationProps, err := r.graph.QueryNodes(ctx, NodeTypeConversation, filters)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query conversations by session: %w", err)
-	}
+	driver := neo4jGraph.Driver()
+	session := driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
 
-	conversations := make([]*domain.Conversation, len(conversationProps))
-	for i, props := range conversationProps {
-		conversation, err := r.mapToConversation(props)
+	// Cypher query to traverse relationships and find conversations for project
+	query := `
+		MATCH (p:Project {id: $projectID})<-[:BELONGS_TO]-(c:Conversation)
+		RETURN c.id as id, c.status as status, c.created_at as created_at, c.updated_at as updated_at
+		ORDER BY c.created_at DESC
+	`
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, map[string]interface{}{
+			"projectID": projectID,
+		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to map conversation properties: %w", err)
+			return nil, err
 		}
-		conversations[i] = conversation
+
+		var conversations []*domain.Conversation
+		for result.Next(ctx) {
+			record := result.Record()
+
+			// Extract conversation properties
+			id := record.Values[0].(string)
+			status := record.Values[1].(string)
+			createdAtStr := record.Values[2].(string)
+			updatedAtStr := record.Values[3].(string)
+
+			// Parse timestamps
+			createdAt, err := parseTime(createdAtStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse created_at: %w", err)
+			}
+
+			updatedAt, err := parseTime(updatedAtStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse updated_at: %w", err)
+			}
+
+			// Create conversation object
+			conversation := &domain.Conversation{
+				ID:        id,
+				Status:    domain.ConversationStatus(status),
+				Messages:  make([]domain.ConversationMessage, 0),
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			}
+
+			conversations = append(conversations, conversation)
+		}
+
+		return conversations, result.Err()
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to find conversations by project: %w", err)
 	}
 
-	return conversations, nil
+	return result.([]*domain.Conversation), nil
 }
 
 // FindActiveConversations finds all active conversations
@@ -355,26 +523,11 @@ func (r *GraphConversationRepository) FindConversationsByStatus(ctx context.Cont
 	return conversations, nil
 }
 
-// mapToConversation converts map properties to Conversation domain object
+// mapToConversation converts map properties to Conversation domain object (graph-native)
 func (r *GraphConversationRepository) mapToConversation(props map[string]interface{}) (*domain.Conversation, error) {
 	id, ok := props["id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid conversation id")
-	}
-
-	sessionID, ok := props["session_id"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid session_id")
-	}
-
-	userID, ok := props["user_id"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid user_id")
-	}
-
-	projectID, ok := props["project_id"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid project_id")
 	}
 
 	statusStr, ok := props["status"].(string)
@@ -403,34 +556,14 @@ func (r *GraphConversationRepository) mapToConversation(props map[string]interfa
 		return nil, fmt.Errorf("failed to parse updated_at: %w", err)
 	}
 
-	// Handle execution plan IDs (may be nil or array)
-	var executionPlanIDs []string
-	if planIDs, exists := props["execution_plan_ids"]; exists && planIDs != nil {
-		if planIDsSlice, ok := planIDs.([]interface{}); ok {
-			executionPlanIDs = make([]string, len(planIDsSlice))
-			for i, planID := range planIDsSlice {
-				if planIDStr, ok := planID.(string); ok {
-					executionPlanIDs[i] = planIDStr
-				}
-			}
-		}
-	}
-
-	if executionPlanIDs == nil {
-		executionPlanIDs = make([]string, 0)
-	}
-
-	// Create conversation object
+	// Graph-native: Create conversation object with only essential properties
+	// Relationships (user, session, project, execution plans) are queried via graph traversal, not stored as properties
 	conversation := &domain.Conversation{
-		ID:               id,
-		SessionID:        sessionID,
-		UserID:           userID,
-		ProjectID:        projectID,
-		Status:           domain.ConversationStatus(statusStr),
-		Messages:         make([]domain.ConversationMessage, 0), // Messages loaded separately
-		ExecutionPlanIDs: executionPlanIDs,
-		CreatedAt:        createdAt,
-		UpdatedAt:        updatedAt,
+		ID:        id,
+		Status:    domain.ConversationStatus(statusStr),
+		Messages:  make([]domain.ConversationMessage, 0), // Messages loaded separately
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 
 	return conversation, nil
@@ -562,4 +695,137 @@ func (r *GraphConversationRepository) GetConversationContext(ctx context.Context
 	}
 
 	return result.(*domain.ConversationContextData), nil
+}
+
+// GetConversationWithRelationships retrieves conversation with all related entities using graph traversal
+// This implements the graph-native approach for complete context loading in a single query
+func (r *GraphConversationRepository) GetConversationWithRelationships(ctx context.Context, conversationID string) (*domain.ConversationWithRelationships, error) {
+	// Type assert to get Neo4j driver access for direct Cypher queries
+	neo4jGraph, ok := r.graph.(*graph.Neo4jGraph)
+	if !ok {
+		return nil, fmt.Errorf("GetConversationWithRelationships requires Neo4j graph implementation")
+	}
+
+	driver := neo4jGraph.Driver()
+	session := driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	// Comprehensive Cypher query to get conversation with all relationships
+	query := `
+		MATCH (c:Conversation {id: $conversationID})
+		OPTIONAL MATCH (u:User)-[:PARTICIPANT_IN]->(c)
+		OPTIONAL MATCH (s:Session)-[:IN_SESSION]->(c)
+		OPTIONAL MATCH (c)-[:BELONGS_TO]->(p:Project)
+		OPTIONAL MATCH (c)-[:HAS_EXECUTION_PLAN]->(ep:ExecutionPlan)
+		RETURN 
+			c.id as conversationID,
+			c.status as conversationStatus,
+			c.created_at as conversationCreatedAt,
+			c.updated_at as conversationUpdatedAt,
+			u.id as userID,
+			u.email as userEmail,
+			s.id as sessionID,
+			s.status as sessionStatus,
+			p.id as projectID,
+			p.name as projectName,
+			collect(distinct {id: ep.id, status: ep.status}) as executionPlans
+	`
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, map[string]interface{}{
+			"conversationID": conversationID,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if !result.Next(ctx) {
+			return nil, fmt.Errorf("conversation not found: %s", conversationID)
+		}
+
+		record := result.Record()
+
+		// Extract conversation data
+		convID := record.Values[0].(string)
+		convStatus := record.Values[1].(string)
+		convCreatedAtStr := record.Values[2].(string)
+		convUpdatedAtStr := record.Values[3].(string)
+
+		// Parse timestamps
+		createdAt, err := parseTime(convCreatedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse conversation created_at: %w", err)
+		}
+
+		updatedAt, err := parseTime(convUpdatedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse conversation updated_at: %w", err)
+		}
+
+		// Create conversation object
+		conversation := &domain.Conversation{
+			ID:        convID,
+			Status:    domain.ConversationStatus(convStatus),
+			Messages:  make([]domain.ConversationMessage, 0), // Messages loaded separately if needed
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
+		}
+
+		// Extract user data (optional)
+		var user *domain.UserInfo
+		if record.Values[4] != nil {
+			user = &domain.UserInfo{
+				ID:    record.Values[4].(string),
+				Email: record.Values[5].(string),
+			}
+		}
+
+		// Extract session data (optional)
+		var sessionInfo *domain.SessionInfo
+		if record.Values[6] != nil {
+			sessionInfo = &domain.SessionInfo{
+				ID:     record.Values[6].(string),
+				Status: record.Values[7].(string),
+			}
+		}
+
+		// Extract project data (optional)
+		var project *domain.ProjectInfo
+		if record.Values[8] != nil {
+			project = &domain.ProjectInfo{
+				ID:   record.Values[8].(string),
+				Name: record.Values[9].(string),
+			}
+		}
+
+		// Extract execution plans (may be empty list)
+		var executionPlans []*domain.ExecutionPlanInfo
+		if record.Values[10] != nil {
+			executionPlanData := record.Values[10].([]interface{})
+			for _, epData := range executionPlanData {
+				if epMap, ok := epData.(map[string]interface{}); ok {
+					if epMap["id"] != nil && epMap["status"] != nil {
+						executionPlans = append(executionPlans, &domain.ExecutionPlanInfo{
+							ID:     epMap["id"].(string),
+							Status: epMap["status"].(string),
+						})
+					}
+				}
+			}
+		}
+
+		return &domain.ConversationWithRelationships{
+			Conversation:   conversation,
+			User:           user,
+			Session:        sessionInfo,
+			Project:        project,
+			ExecutionPlans: executionPlans,
+		}, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get conversation with relationships: %w", err)
+	}
+
+	return result.(*domain.ConversationWithRelationships), nil
 }

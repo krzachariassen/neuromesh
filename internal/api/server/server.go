@@ -10,6 +10,7 @@ import (
 	conversationDomain "neuromesh/internal/conversation/domain"
 	"neuromesh/internal/graph"
 	"neuromesh/internal/logging"
+	projectApp "neuromesh/internal/project/application"
 	userApp "neuromesh/internal/user/application"
 )
 
@@ -27,12 +28,13 @@ func NewServer(
 	orchestrator bff.AIOrchestrator,
 	conversationService conversationApp.ConversationService,
 	userService userApp.UserService,
+	projectService projectApp.ProjectService,
 	graph graph.Graph,
 	graphService conversationDomain.ConversationGraphService, // Inject the graph service dependency
 	logger logging.Logger,
 ) *Server {
 	// Create BFF service
-	bffService := bff.NewService(orchestrator, conversationService, userService, graph, logger)
+	bffService := bff.NewService(orchestrator, conversationService, userService, projectService, graph, logger)
 
 	// Create router with all APIs, using the injected graph service
 	router := NewRouter(conversationService, graphService, bffService, logger)

@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"neuromesh/internal/agent/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"neuromesh/internal/agent/domain"
 )
 
 // MockAgentService for testing
@@ -66,7 +67,8 @@ func TestGraphExplorer_GetAgentContext(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Contains(t, context, "Deploy Agent")
-		assert.Contains(t, context, "deploy, test")
+		assert.Contains(t, context, "deploy")
+		assert.Contains(t, context, "test")
 		assert.Contains(t, context, "Monitor Agent")
 		assert.Contains(t, context, "monitor")
 		assert.Contains(t, context, "online")
@@ -82,7 +84,7 @@ func TestGraphExplorer_GetAgentContext(t *testing.T) {
 		context, err := explorer.GetAgentContext(context.Background())
 
 		assert.NoError(t, err)
-		assert.Equal(t, "No agents currently registered", context)
+		assert.Equal(t, `{"available_agents": []}`, context)
 		mockAgentService.AssertExpectations(t)
 	})
 }

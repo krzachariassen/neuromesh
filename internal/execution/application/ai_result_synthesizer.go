@@ -60,6 +60,21 @@ func (s *AIResultSynthesizer) SynthesizeResults(ctx context.Context, planID stri
 		return "", fmt.Errorf("AI synthesis produced empty result for plan %s", planID)
 	}
 
+	// Store the synthesis result in the graph database
+	synthesisResult := executionDomain.NewSynthesisResult(planID, synthesizedResult)
+
+	// Add synthesis metadata
+	synthesisResult.Metadata["agent_count"] = len(synthCtx.AgentResults)
+	synthesisResult.Metadata["successful_agents"] = len(synthCtx.GetSuccessfulResults())
+	synthesisResult.Metadata["synthesis_timestamp"] = synthCtx.CreatedAt.Format("2006-01-02T15:04:05Z07:00")
+
+	err = s.repository.StoreSynthesisResult(ctx, synthesisResult)
+	if err != nil {
+		// Log error but don't fail synthesis - storage is supplementary to synthesis logic
+		// In production, this would be logged properly
+		fmt.Printf("Warning: Failed to store synthesis result for plan %s: %v\n", planID, err)
+	}
+
 	return synthesizedResult, nil
 }
 

@@ -42,9 +42,9 @@ type AIExecutionEngine struct {
 
 // NewAIExecutionEngine creates a new AI execution engine with clean messaging abstraction
 func NewAIExecutionEngine(
-	aiProvider aiDomain.AIProvider, 
-	aiMessageBus messaging.AIMessageBus, 
-	correlationTracker *infrastructure.CorrelationTracker, 
+	aiProvider aiDomain.AIProvider,
+	aiMessageBus messaging.AIMessageBus,
+	correlationTracker *infrastructure.CorrelationTracker,
 	repository planningDomain.ExecutionPlanRepository,
 	messageBus messaging.MessageBus,
 ) *AIExecutionEngine {
@@ -60,6 +60,24 @@ func NewAIExecutionEngine(
 // ExecuteWithAgents handles AI-native execution with bidirectional agent communication via events
 // This is stateless and supports concurrent executions using execution step IDs as correlation IDs
 func (e *AIExecutionEngine) ExecuteWithAgents(ctx context.Context, executionPlan, userInput, userID, agentContext, planID string) (string, error) {
+	// Update execution plan status to EXECUTING when execution starts
+	plan, err := e.repository.GetByID(ctx, planID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get execution plan for status update: %w", err)
+	}
+
+	// Update status to EXECUTING if it's in DRAFT state
+	if plan.Status == planningDomain.ExecutionPlanStatusDraft {
+		plan.Status = planningDomain.ExecutionPlanStatusExecuting
+		startTime := time.Now()
+		plan.StartedAt = &startTime
+		err = e.repository.Update(ctx, plan)
+		if err != nil {
+			// Log warning but continue execution
+			fmt.Printf("Warning: Failed to update execution plan status to EXECUTING for plan %s: %v\n", planID, err)
+		}
+	}
+
 	// Get AI execution decision using improved system prompt
 	systemPrompt := e.buildExecutionSystemPrompt(agentContext, executionPlan)
 	userPrompt := fmt.Sprintf("Execute plan for user request: %s", userInput)
@@ -294,7 +312,7 @@ If providing final result to user, respond with:
 	// Publish agent completion event AFTER full processing is complete
 	// This fixes the race condition by ensuring synthesis happens after execution finishes
 	log.Printf("[DEBUG] Using graph lookup to find plan_id from step_id: %s", agentResponse.CorrelationID)
-	
+
 	// Use graph-native lookup to find plan_id from step_id (correlation_id)
 	planID := e.extractPlanIDFromContext(nil, agentResponse.CorrelationID)
 	if planID != "" {

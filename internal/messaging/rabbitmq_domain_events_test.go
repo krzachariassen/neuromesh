@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"neuromesh/internal/logging"
-	
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,14 +37,14 @@ func TestRabbitMQDomainEvents_PublishAndSubscribe(t *testing.T) {
 	// Test domain event subscription
 	subscriptionCtx, subscriptionCancel := context.WithCancel(ctx)
 	defer subscriptionCancel()
-	
+
 	eventsChan, err := bus.SubscribeToDomainEvents(subscriptionCtx, "synthesis-coordinator", "execution.agent.completed")
 	require.NoError(t, err)
 
 	// Publish a domain event
 	testEvent := AgentCompletedEvent{
 		PlanID:  "plan-123",
-		StepID:  "step-456", 
+		StepID:  "step-456",
 		AgentID: "test-agent-123",
 		Status:  "completed",
 	}
@@ -56,16 +56,16 @@ func TestRabbitMQDomainEvents_PublishAndSubscribe(t *testing.T) {
 	select {
 	case receivedEvent := <-eventsChan:
 		assert.Equal(t, "execution.agent.completed", receivedEvent.EventType)
-		
+
 		var decodedEvent AgentCompletedEvent
 		err := receivedEvent.UnmarshalEventData(&decodedEvent)
 		require.NoError(t, err)
-		
+
 		assert.Equal(t, testEvent.AgentID, decodedEvent.AgentID)
 		assert.Equal(t, testEvent.PlanID, decodedEvent.PlanID)
 		assert.Equal(t, testEvent.StepID, decodedEvent.StepID)
 		assert.Equal(t, testEvent.Status, decodedEvent.Status)
-		
+
 	case <-time.After(5 * time.Second):
 		t.Fatal("Did not receive domain event within timeout")
 	}
@@ -96,10 +96,10 @@ func TestRabbitMQDomainEvents_MultipleSubscribers(t *testing.T) {
 	// Create two subscribers for the same event
 	subscriptionCtx, subscriptionCancel := context.WithCancel(ctx)
 	defer subscriptionCancel()
-	
+
 	events1, err := bus.SubscribeToDomainEvents(subscriptionCtx, "subscriber-1", "test.event")
 	require.NoError(t, err)
-	
+
 	events2, err := bus.SubscribeToDomainEvents(subscriptionCtx, "subscriber-2", "test.event")
 	require.NoError(t, err)
 
@@ -122,7 +122,7 @@ func TestRabbitMQDomainEvents_MultipleSubscribers(t *testing.T) {
 			break
 		}
 	}
-	
+
 	assert.Equal(t, 2, receivedCount, "Both subscribers should receive the event")
 }
 
@@ -132,7 +132,7 @@ func getTestRabbitMQURL() string {
 		"amqp://guest:guest@localhost:5672/",
 		"amqp://localhost:5672/",
 	}
-	
+
 	for _, url := range testURLs {
 		config := RabbitMQConfig{
 			URL:            url,

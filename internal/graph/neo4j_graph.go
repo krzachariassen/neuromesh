@@ -212,9 +212,11 @@ func (g *Neo4jGraph) AddEdge(ctx context.Context, sourceType, sourceID, targetTy
 	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
 
+	// Use MERGE for idempotency - only creates relationship if it doesn't exist
+	// This prevents duplicate relationships from being created
 	query := fmt.Sprintf(`
 		MATCH (a:%s {id: $sourceID}), (b:%s {id: $targetID})
-		CREATE (a)-[r:%s]->(b)
+		MERGE (a)-[r:%s]->(b)
 		SET r += $properties
 	`, sourceType, targetType, edgeType)
 

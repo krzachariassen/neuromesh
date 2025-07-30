@@ -39,6 +39,7 @@ type ConversationService interface {
 	// Relationship management
 	LinkConversationToSession(ctx context.Context, conversationID, sessionID string) error
 	LinkConversationToUser(ctx context.Context, conversationID, userID string) error
+	LinkConversationToProject(ctx context.Context, conversationID, projectID string) error
 
 	// Query operations
 	FindConversationsByUser(ctx context.Context, userID string) ([]*domain.Conversation, error)
@@ -62,9 +63,10 @@ func NewConversationService(repo domain.ConversationRepository) ConversationServ
 	}
 }
 
-// CreateConversation creates a new conversation
+// CreateConversation creates a new conversation with graph-native relationships
 func (s *ConversationServiceImpl) CreateConversation(ctx context.Context, id, sessionID, userID, projectID string) (*domain.Conversation, error) {
-	conversation, err := domain.NewConversation(id, sessionID, userID, projectID)
+	// Create conversation entity without embedded foreign keys
+	conversation, err := domain.NewConversation(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create conversation domain object: %w", err)
 	}
@@ -73,13 +75,17 @@ func (s *ConversationServiceImpl) CreateConversation(ctx context.Context, id, se
 		return nil, fmt.Errorf("failed to store conversation: %w", err)
 	}
 
-	// Link conversation to session and user
+	// Create graph relationships (this is the graph-native approach)
 	if err := s.repo.LinkConversationToSession(ctx, id, sessionID); err != nil {
 		return nil, fmt.Errorf("failed to link conversation to session: %w", err)
 	}
 
 	if err := s.repo.LinkConversationToUser(ctx, id, userID); err != nil {
 		return nil, fmt.Errorf("failed to link conversation to user: %w", err)
+	}
+
+	if err := s.repo.LinkConversationToProject(ctx, id, projectID); err != nil {
+		return nil, fmt.Errorf("failed to link conversation to project: %w", err)
 	}
 
 	return conversation, nil
@@ -223,6 +229,14 @@ func (s *ConversationServiceImpl) LinkConversationToSession(ctx context.Context,
 func (s *ConversationServiceImpl) LinkConversationToUser(ctx context.Context, conversationID, userID string) error {
 	if err := s.repo.LinkConversationToUser(ctx, conversationID, userID); err != nil {
 		return fmt.Errorf("failed to link conversation to user: %w", err)
+	}
+	return nil
+}
+
+// LinkConversationToProject links a conversation to a project
+func (s *ConversationServiceImpl) LinkConversationToProject(ctx context.Context, conversationID, projectID string) error {
+	if err := s.repo.LinkConversationToProject(ctx, conversationID, projectID); err != nil {
+		return fmt.Errorf("failed to link conversation to project: %w", err)
 	}
 	return nil
 }

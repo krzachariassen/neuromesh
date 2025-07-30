@@ -27,7 +27,7 @@ func (s *Service) ChatHandler() http.Handler {
 		}
 
 		// Process the message
-		response, err := s.ProcessMessage(r.Context(), req.SessionID, req.Message)
+		response, err := s.ProcessMessage(r.Context(), req.SessionID, req.Message, req.ProjectID)
 		if err != nil {
 			s.logger.Error("Failed to process web message", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -64,8 +64,9 @@ func (s *Service) WebSocketHandler() http.Handler {
 	messageLoop:
 		for {
 			var msg struct {
-				Type    string `json:"type"`
-				Message string `json:"message"`
+				Type      string `json:"type"`
+				Message   string `json:"message"`
+				ProjectID string `json:"project_id,omitempty"`
 			}
 
 			// Read message from WebSocket
@@ -78,7 +79,7 @@ func (s *Service) WebSocketHandler() http.Handler {
 			switch msg.Type {
 			case "chat":
 				// Process chat message
-				response, err := s.ProcessMessage(r.Context(), sessionID, msg.Message)
+				response, err := s.ProcessMessage(r.Context(), sessionID, msg.Message, msg.ProjectID)
 				if err != nil {
 					s.logger.Error("Failed to process WebSocket message", err)
 					// Send error response

@@ -8,6 +8,8 @@ import (
 	conversationApp "neuromesh/internal/conversation/application"
 	conversationDomain "neuromesh/internal/conversation/domain"
 	planningDomain "neuromesh/internal/planning/domain"
+	projectApp "neuromesh/internal/project/application"
+	projectDomain "neuromesh/internal/project/domain"
 	userApp "neuromesh/internal/user/application"
 	userDomain "neuromesh/internal/user/domain"
 
@@ -96,6 +98,11 @@ func (m *MockConversationService) AddMessage(ctx context.Context, conversationID
 
 func (m *MockConversationService) LinkExecutionPlan(ctx context.Context, conversationID, executionPlanID string) error {
 	args := m.Called(ctx, conversationID, executionPlanID)
+	return args.Error(0)
+}
+
+func (m *MockConversationService) LinkConversationToProject(ctx context.Context, conversationID, projectID string) error {
+	args := m.Called(ctx, conversationID, projectID)
 	return args.Error(0)
 }
 
@@ -312,3 +319,138 @@ func (m *MockPlanningResultRepository) LinkToConversation(ctx context.Context, p
 	// Add tracking fields if needed for specific tests
 	return nil
 }
+
+// MockProjectService provides a testify-based mock for project service operations
+type MockProjectService struct {
+	mock.Mock
+}
+
+// NewMockProjectService creates a new mock project service instance
+func NewMockProjectService() *MockProjectService {
+	return &MockProjectService{}
+}
+
+func (m *MockProjectService) CreateProject(ctx context.Context, id, name, ownerEmail string) (*projectDomain.Project, error) {
+	args := m.Called(ctx, id, name, ownerEmail)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*projectDomain.Project), args.Error(1)
+}
+
+func (m *MockProjectService) GetProject(ctx context.Context, projectID string) (*projectDomain.Project, error) {
+	args := m.Called(ctx, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*projectDomain.Project), args.Error(1)
+}
+
+func (m *MockProjectService) GetProjectWithMembers(ctx context.Context, projectID string) (*projectDomain.Project, error) {
+	args := m.Called(ctx, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*projectDomain.Project), args.Error(1)
+}
+
+func (m *MockProjectService) UpdateProjectDescription(ctx context.Context, projectID, description string) error {
+	args := m.Called(ctx, projectID, description)
+	return args.Error(0)
+}
+
+func (m *MockProjectService) UpdateProjectStatus(ctx context.Context, projectID string, status projectDomain.ProjectStatus) error {
+	args := m.Called(ctx, projectID, status)
+	return args.Error(0)
+}
+
+func (m *MockProjectService) DeleteProject(ctx context.Context, projectID string) error {
+	args := m.Called(ctx, projectID)
+	return args.Error(0)
+}
+
+func (m *MockProjectService) AddMember(ctx context.Context, projectID, userID, email string, role projectDomain.ProjectRole) error {
+	args := m.Called(ctx, projectID, userID, email, role)
+	return args.Error(0)
+}
+
+func (m *MockProjectService) RemoveMember(ctx context.Context, projectID, userID string) error {
+	args := m.Called(ctx, projectID, userID)
+	return args.Error(0)
+}
+
+func (m *MockProjectService) GetProjectMembers(ctx context.Context, projectID string) ([]projectDomain.ProjectMember, error) {
+	args := m.Called(ctx, projectID)
+	return args.Get(0).([]projectDomain.ProjectMember), args.Error(1)
+}
+
+func (m *MockProjectService) FindProjectsByOwner(ctx context.Context, ownerEmail string) ([]*projectDomain.Project, error) {
+	args := m.Called(ctx, ownerEmail)
+	return args.Get(0).([]*projectDomain.Project), args.Error(1)
+}
+
+func (m *MockProjectService) FindProjectsByMember(ctx context.Context, userID string) ([]*projectDomain.Project, error) {
+	args := m.Called(ctx, userID)
+	return args.Get(0).([]*projectDomain.Project), args.Error(1)
+}
+
+func (m *MockProjectService) FindActiveProjects(ctx context.Context) ([]*projectDomain.Project, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]*projectDomain.Project), args.Error(1)
+}
+
+func (m *MockProjectService) EnsureSchema(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+// Helper functions for creating mock objects
+func CreateMockConversation(id, sessionID, userID, projectID string) *conversationDomain.Conversation {
+	// Graph-native: Only include essential properties, relationships are handled separately
+	return &conversationDomain.Conversation{
+		ID:        id,
+		Status:    conversationDomain.ConversationStatusActive,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Messages:  []conversationDomain.ConversationMessage{},
+	}
+}
+
+func CreateMockProject(id, name string) *projectDomain.Project {
+	return &projectDomain.Project{
+		ID:          id,
+		Name:        name,
+		Description: "Test project",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		Metadata:    make(map[string]interface{}),
+	}
+}
+
+func CreateMockUser(userID, sessionID string) *userDomain.User {
+	return &userDomain.User{
+		ID:        userID,
+		SessionID: sessionID,
+		UserType:  userDomain.UserTypeWebSession,
+		Status:    userDomain.UserStatusActive,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		LastSeen:  time.Now(),
+		Metadata:  make(map[string]interface{}),
+	}
+}
+
+func CreateMockSession(sessionID, userID string) *userDomain.Session {
+	return &userDomain.Session{
+		ID:        sessionID,
+		UserID:    userID,
+		Status:    userDomain.SessionStatusActive,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Metadata:  make(map[string]interface{}),
+	}
+}
+
+// Ensure additional mocks implement the interfaces
+var _ projectApp.ProjectService = (*MockProjectService)(nil)
