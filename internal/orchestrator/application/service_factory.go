@@ -109,10 +109,9 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 
 	// Create planning repositories
 	executionPlanRepo := planningInfra.NewGraphExecutionPlanRepository(sf.graph)
-	planningResultRepo := planningInfra.NewGraphPlanningRepository(sf.graph)
 
-	// Create all application services with proper dependencies using new unified planning approach
-	aiPlanningEngine := planningApp.NewAIPlanningEngineWithRepositories(sf.aiProvider, executionPlanRepo, planningResultRepo)
+	// Create all application services with proper dependencies using unified planning approach
+	aiPlanningEngine := planningApp.NewAIPlanningEngineWithRepository(sf.aiProvider, executionPlanRepo)
 	graphExplorer := NewGraphExplorer(agentService)
 	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker, executionPlanRepo, sf.messageBus)
 

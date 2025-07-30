@@ -140,13 +140,13 @@ func TestExecutionPlan_GetStepsByStatus(t *testing.T) {
 	step1 := NewExecutionStep("Step 1", "First step", "agent-1")
 	step2 := NewExecutionStep("Step 2", "Second step", "agent-2")
 
-	step1.Status = ExecutionStepStatusPending
+	step1.Status = ExecutionStepStatusAssigned
 	step2.Status = ExecutionStepStatusCompleted
 
 	plan.AddStep(step1)
 	plan.AddStep(step2)
 
-	pendingSteps := plan.GetStepsByStatus(ExecutionStepStatusPending)
+	pendingSteps := plan.GetStepsByStatus(ExecutionStepStatusAssigned)
 	assert.Len(t, pendingSteps, 1)
 	assert.Equal(t, step1, pendingSteps[0])
 }
@@ -157,7 +157,7 @@ func TestExecutionPlan_GetNextStep(t *testing.T) {
 	step2 := NewExecutionStep("Step 2", "Second step", "agent-2")
 
 	step1.Status = ExecutionStepStatusCompleted
-	step2.Status = ExecutionStepStatusPending
+	step2.Status = ExecutionStepStatusAssigned
 
 	plan.AddStep(step1)
 	plan.AddStep(step2)

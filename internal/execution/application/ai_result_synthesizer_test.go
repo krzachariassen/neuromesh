@@ -127,7 +127,7 @@ func TestAIResultSynthesizer(t *testing.T) {
 					StepNumber:    1,
 					Description:   "Collect data",
 					AssignedAgent: "data-collector",
-					Status:        planningDomain.ExecutionStepStatusPending,
+					Status:        planningDomain.ExecutionStepStatusAssigned,
 				},
 				{
 					ID:            "step-2",
@@ -135,7 +135,7 @@ func TestAIResultSynthesizer(t *testing.T) {
 					StepNumber:    2,
 					Description:   "Analyze data",
 					AssignedAgent: "analyzer",
-					Status:        planningDomain.ExecutionStepStatusPending,
+					Status:        planningDomain.ExecutionStepStatusAssigned,
 				},
 			},
 		}
@@ -200,7 +200,7 @@ func createTestExecutionPlan(planID string) *planningDomain.ExecutionPlan {
 				StepNumber:    1,
 				Description:   "Collect patient data",
 				AssignedAgent: "data-collector-agent",
-				Status:        planningDomain.ExecutionStepStatusPending,
+				Status:        planningDomain.ExecutionStepStatusAssigned,
 			},
 			{
 				ID:            "step-2",
@@ -208,7 +208,7 @@ func createTestExecutionPlan(planID string) *planningDomain.ExecutionPlan {
 				StepNumber:    2,
 				Description:   "Analyze patterns",
 				AssignedAgent: "pattern-analysis-agent",
-				Status:        planningDomain.ExecutionStepStatusPending,
+				Status:        planningDomain.ExecutionStepStatusAssigned,
 			},
 			{
 				ID:            "step-3",
@@ -216,7 +216,7 @@ func createTestExecutionPlan(planID string) *planningDomain.ExecutionPlan {
 				StepNumber:    3,
 				Description:   "Assess risks",
 				AssignedAgent: "risk-assessment-agent",
-				Status:        planningDomain.ExecutionStepStatusPending,
+				Status:        planningDomain.ExecutionStepStatusAssigned,
 			},
 		},
 	}

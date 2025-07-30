@@ -12,7 +12,7 @@ import (
 
 // AIPlanningEngineInterface defines the interface for unified planning approach
 type AIPlanningEngineInterface interface {
-	CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string) (*planningDomain.PlanningResult, error)
+	CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string) (*planningDomain.ExecutionPlan, error)
 	LinkPlanningResultToConversation(ctx context.Context, planningResultID, conversationID string) error
 }
 
@@ -83,12 +83,12 @@ type OrchestratorRequest struct {
 
 // OrchestratorResult represents the orchestrator's response
 type OrchestratorResult struct {
-	Message         string                         `json:"message"`
-	PlanningResult  *planningDomain.PlanningResult `json:"planning_result,omitempty"` // New unified planning result
-	ExecutionPlanID string                         `json:"execution_plan_id,omitempty"`
-	Status          string                         `json:"status,omitempty"` // NEW: Execution status for pure orchestration
-	Success         bool                           `json:"success"`
-	Error           string                         `json:"error,omitempty"`
+	Message         string                        `json:"message"`
+	ExecutionPlan   *planningDomain.ExecutionPlan `json:"execution_plan,omitempty"` // Unified execution plan
+	ExecutionPlanID string                        `json:"execution_plan_id,omitempty"`
+	Status          string                        `json:"status,omitempty"` // NEW: Execution status for pure orchestration
+	Success         bool                          `json:"success"`
+	Error           string                        `json:"error,omitempty"`
 }
 
 // ProcessUserRequest is the main entry point that replaces the old ProcessRequest()
@@ -114,45 +114,38 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 	}
 
 	result := &OrchestratorResult{
-		PlanningResult: planningResult,
-		Success:        true,
+		ExecutionPlan:   planningResult,
+		ExecutionPlanID: planningResult.ID,
+		Success:         true,
 	}
 
 	// 3. Handle planning result based on type - PURE ORCHESTRATION
 	if planningResult.Type == planningDomain.PlanningTypeClarify {
 		ors.logger.Info("🤔 Planning type: Clarify")
-		result.Message = planningResult.ClarificationQuestion
+		result.Message = planningResult.Reasoning // Use reasoning instead of ClarificationQuestion
 	} else if planningResult.Type == planningDomain.PlanningTypeExecute {
-		ors.logger.Info("🚀 Planning type: Execute - AI-Native Orchestration", "requiredAgents", len(planningResult.RequiredAgents))
-		result.ExecutionPlanID = planningResult.ExecutionPlanID
+		ors.logger.Info("🚀 Planning type: Execute")
+		result.ExecutionPlanID = planningResult.ID
 
-		// AI-Native Execution: Use AIExecutionEngine for intelligent coordination
-		if ors.aiExecutionEngine != nil {
-			// Convert planning result to execution plan format for AIExecutionEngine
-			executionPlan := ors.convertPlanningResultToExecutionPlan(planningResult)
+		// PURE ORCHESTRATION: We no longer convert or execute directly
+		// Instead, we just prepare the execution plan and pass it along
+		// AI-native execution orchestration - completely asynchronous
+		go func() {
+			backgroundCtx := context.Background()
+			ors.logger.Info("🤖 Starting AI-native execution", "planID", planningResult.ID)
+			// Convert ExecutionPlan to JSON string for the execution engine
+			executionPlanJSON := ors.convertExecutionPlanToJSON(planningResult)
+			finalResult, err := ors.aiExecutionEngine.ExecuteWithAgents(backgroundCtx, executionPlanJSON, request.UserInput, request.UserID, agentContext, planningResult.ID)
+			if err != nil {
+				ors.logger.Error("❌ AI-native execution failed", err, "planID", planningResult.ID)
+			} else {
+				ors.logger.Info("✅ AI-native execution completed", "planID", planningResult.ID, "result", finalResult)
+			}
+		}()
 
-			// Start AI-native execution asynchronously
-			go func() {
-				// Create a background context for async execution (not tied to HTTP request)
-				backgroundCtx := context.Background()
-				ors.logger.Info("🤖 Starting AI-native execution", "planID", planningResult.ExecutionPlanID)
-
-				finalResult, err := ors.aiExecutionEngine.ExecuteWithAgents(backgroundCtx, executionPlan, request.UserInput, request.UserID, agentContext, planningResult.ExecutionPlanID)
-				if err != nil {
-					ors.logger.Error("❌ AI-native execution failed", err, "planID", planningResult.ExecutionPlanID)
-				} else {
-					ors.logger.Info("✅ AI-native execution completed", "planID", planningResult.ExecutionPlanID, "result", finalResult)
-				}
-			}()
-
-			ors.logger.Info("✅ AI-native async execution started", "planID", planningResult.ExecutionPlanID)
-			result.Status = "executing"
-			// NO immediate message - pure orchestration returns plan ID only
-		} else {
-			ors.logger.Error("❌ AIExecutionEngine not available", fmt.Errorf("AIExecutionEngine is nil"))
-			result.Success = false
-			result.Error = "AI execution engine not available"
-		}
+		ors.logger.Info("✅ AI-native async execution started", "planID", planningResult.ID)
+		result.Status = "executing"
+		// NO immediate message - pure orchestration returns plan ID only
 	} else {
 		ors.logger.Warn("❓ Unknown planning type", "type", planningResult.Type)
 	}
@@ -160,12 +153,12 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 	ors.logger.Info("✅ Pure orchestration result", "success", result.Success, "planID", result.ExecutionPlanID, "status", result.Status)
 
 	// 4. Cross-domain coordination: Link execution plans to conversations
-	if planningResult.Type == planningDomain.PlanningTypeExecute && planningResult.ExecutionPlanID != "" && request.ConversationID != "" {
-		if err := ors.coordinateCrossDomainRelationships(ctx, request.ConversationID, planningResult.ExecutionPlanID); err != nil {
-			ors.logger.Warn("Failed to coordinate cross-domain relationships", "error", err, "conversationID", request.ConversationID, "planID", planningResult.ExecutionPlanID)
+	if planningResult.Type == planningDomain.PlanningTypeExecute && planningResult.ID != "" && request.ConversationID != "" {
+		if err := ors.coordinateCrossDomainRelationships(ctx, request.ConversationID, planningResult.ID); err != nil {
+			ors.logger.Warn("Failed to coordinate cross-domain relationships", "error", err, "conversationID", request.ConversationID, "planID", planningResult.ID)
 			// Don't fail the entire request for relationship linking issues
 		} else {
-			ors.logger.Info("✅ Cross-domain relationship created", "conversationID", request.ConversationID, "planID", planningResult.ExecutionPlanID)
+			ors.logger.Info("✅ Cross-domain relationship created", "conversationID", request.ConversationID, "planID", planningResult.ID)
 		}
 	}
 
@@ -285,20 +278,85 @@ func (ors *OrchestratorService) IsExecutionComplete(ctx context.Context, planID 
 	return true, nil
 }
 
-// convertPlanningResultToExecutionPlan converts a planning result to execution plan format
-func (ors *OrchestratorService) convertPlanningResultToExecutionPlan(planningResult *planningDomain.PlanningResult) string {
+// convertExecutionPlanToJSON converts an execution plan to JSON string for the execution engine
+func (ors *OrchestratorService) convertExecutionPlanToJSON(executionPlan *planningDomain.ExecutionPlan) string {
+	if executionPlan == nil {
+		return "{}"
+	}
+
+	// Create a simplified execution plan format for the execution engine
+	executionPlanStr := fmt.Sprintf(`{
+	"id": "%s",
+	"intent": "%s",
+	"category": "%s",
+	"required_agents": %s,
+	"agent_gap": %s,
+	"reasoning": "%s",
+	"steps": %s
+}`,
+		executionPlan.ID,
+		executionPlan.Intent,
+		executionPlan.Category,
+		ors.formatAgentList(executionPlan.RequiredAgents),
+		ors.formatAgentList(executionPlan.AgentGap),
+		executionPlan.Reasoning,
+		ors.formatSteps(executionPlan.Steps))
+
+	return executionPlanStr
+}
+
+// formatAgentList formats a slice of agents as JSON array string
+func (ors *OrchestratorService) formatAgentList(agents []string) string {
+	if len(agents) == 0 {
+		return "[]"
+	}
+
+	formatted := "["
+	for i, agent := range agents {
+		if i > 0 {
+			formatted += ", "
+		}
+		formatted += fmt.Sprintf(`"%s"`, agent)
+	}
+	formatted += "]"
+	return formatted
+}
+
+// formatSteps formats execution steps as JSON array string
+func (ors *OrchestratorService) formatSteps(steps []*planningDomain.ExecutionStep) string {
+	if len(steps) == 0 {
+		return "[]"
+	}
+
+	formatted := "["
+	for i, step := range steps {
+		if i > 0 {
+			formatted += ", "
+		}
+		formatted += fmt.Sprintf(`{
+			"id": "%s",
+			"description": "%s",
+			"agent": "%s"
+		}`, step.ID, step.Description, step.AssignedAgent)
+	}
+	formatted += "]"
+	return formatted
+}
+
+// convertPlanningResultToExecutionPlan converts a planning result to execution plan format (legacy support)
+func (ors *OrchestratorService) convertPlanningResultToExecutionPlan(planningResult *planningDomain.ExecutionPlan) string {
 	if planningResult == nil {
 		return ""
 	}
 
-	// Create a simple execution plan description for AIExecutionEngine
+	// This method is now simplified since we work directly with ExecutionPlan
 	executionPlan := fmt.Sprintf(`Execution Plan ID: %s
 Intent: %s
 Category: %s
 Required Agents: %v
 Agent Gap: %v
 Reasoning: %s`,
-		planningResult.ExecutionPlanID,
+		planningResult.ID,
 		planningResult.Intent,
 		planningResult.Category,
 		planningResult.RequiredAgents,

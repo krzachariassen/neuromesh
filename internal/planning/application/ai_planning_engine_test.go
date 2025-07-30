@@ -102,8 +102,8 @@ func TestAIPlanningEngine_CreateExecutionPlan(t *testing.T) {
 		t.Logf("Planning Type: %s", result.Type)
 
 		if result.Type == domain.PlanningTypeClarify {
-			assert.NotEmpty(t, result.ClarificationQuestion)
-			t.Logf("Clarification Question: %s", result.ClarificationQuestion)
+			assert.NotEmpty(t, result.Reasoning)
+			t.Logf("Clarification Reasoning: %s", result.Reasoning)
 		}
 	})
 }

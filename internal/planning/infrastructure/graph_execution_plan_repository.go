@@ -769,3 +769,74 @@ func (r *GraphExecutionPlanRepository) mapNodeDataToSynthesisResult(nodeData map
 		CreatedAt: createdAt,
 	}, nil
 }
+
+// Delete removes an execution plan from the graph (implementing unified repository)
+func (r *GraphExecutionPlanRepository) Delete(ctx context.Context, id string) error {
+	// First, remove all related edges and nodes
+	// Get all execution steps for this plan and delete them
+	stepNodes, err := r.graph.QueryNodes(ctx, "execution_step", map[string]interface{}{
+		"execution_plan_id": id,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to query execution steps: %w", err)
+	}
+
+	// Delete each step and its relationships
+	for _, stepData := range stepNodes {
+		stepID, ok := stepData["id"].(string)
+		if !ok {
+			continue // Skip invalid step IDs
+		}
+		if err := r.graph.DeleteNode(ctx, "execution_step", stepID); err != nil {
+			return fmt.Errorf("failed to delete execution step %s: %w", stepID, err)
+		}
+	}
+
+	// Delete the execution plan node
+	if err := r.graph.DeleteNode(ctx, "execution_plan", id); err != nil {
+		return fmt.Errorf("failed to delete execution plan: %w", err)
+	}
+
+	return nil
+}
+
+// GetByRequestID retrieves execution plans by request ID (from former PlanningResultRepository)
+func (r *GraphExecutionPlanRepository) GetByRequestID(ctx context.Context, requestID string) ([]*domain.ExecutionPlan, error) {
+	// Query for execution plan with the given request_id
+	planNodes, err := r.graph.QueryNodes(ctx, "execution_plan", map[string]interface{}{
+		"request_id": requestID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query execution plan by request ID: %w", err)
+	}
+
+	if len(planNodes) == 0 {
+		return []*domain.ExecutionPlan{}, nil
+	}
+
+	// Get all matching plans
+	var plans []*domain.ExecutionPlan
+	for _, planData := range planNodes {
+		if id, ok := planData["id"].(string); ok {
+			plan, err := r.GetByID(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get plan %s: %w", id, err)
+			}
+			if plan != nil {
+				plans = append(plans, plan)
+			}
+		}
+	}
+
+	return plans, nil
+}
+
+// LinkToRequest links execution plan to a request (from former PlanningResultRepository)
+func (r *GraphExecutionPlanRepository) LinkToRequest(ctx context.Context, planID, requestID string) error {
+	return r.graph.AddEdge(ctx, "execution_plan", planID, "request", requestID, "LINKED_TO_REQUEST", nil)
+}
+
+// LinkToConversation links execution plan to a conversation (from former PlanningResultRepository)
+func (r *GraphExecutionPlanRepository) LinkToConversation(ctx context.Context, planID, conversationID string) error {
+	return r.graph.AddEdge(ctx, "execution_plan", planID, "conversation", conversationID, "LINKED_TO_CONVERSATION", nil)
+}

@@ -28,21 +28,37 @@ const (
 	ExecutionPlanPriorityCritical ExecutionPlanPriority = "CRITICAL"
 )
 
-// ExecutionPlan represents a structured plan with individual steps and agent assignments
+// ExecutionPlan represents a unified plan containing both planning intelligence and execution metadata
+// This consolidates the former PlanningResult and ExecutionPlan into a single entity
 type ExecutionPlan struct {
-	ID                string                `json:"id"`
-	Name              string                `json:"name"`
-	Description       string                `json:"description"`
-	Status            ExecutionPlanStatus   `json:"status"`
-	CreatedAt         time.Time             `json:"created_at"`
-	ApprovedAt        *time.Time            `json:"approved_at,omitempty"`
-	StartedAt         *time.Time            `json:"started_at,omitempty"`
-	CompletedAt       *time.Time            `json:"completed_at,omitempty"`
-	EstimatedDuration int                   `json:"estimated_duration"` // Duration in minutes
-	ActualDuration    int                   `json:"actual_duration"`    // Duration in minutes
-	CanModify         bool                  `json:"can_modify"`
-	Priority          ExecutionPlanPriority `json:"priority"`
-	Steps             []*ExecutionStep      `json:"steps,omitempty"`
+	// Existing execution metadata
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Description string                `json:"description"`
+	Status      ExecutionPlanStatus   `json:"status"`
+	CreatedAt   time.Time             `json:"created_at"`
+	Priority    ExecutionPlanPriority `json:"priority"`
+	Steps       []*ExecutionStep      `json:"steps,omitempty"`
+
+	// Planning intelligence (from former PlanningResult)
+	RequestID       string       `json:"request_id"`
+	Type            PlanningType `json:"type"`
+	Intent          string       `json:"intent"`
+	Category        string       `json:"category"`
+	Confidence      int          `json:"confidence"`
+	Reasoning       string       `json:"reasoning"`
+	AvailableAgents []string     `json:"available_agents"`
+	RequiredAgents  []string     `json:"required_agents"`
+	AgentGap        []string     `json:"agent_gap"`
+
+	// Unified timestamps
+	PlanningCompletedAt *time.Time `json:"planning_completed_at,omitempty"`
+	ApprovedAt          *time.Time `json:"approved_at,omitempty"`
+	StartedAt           *time.Time `json:"started_at,omitempty"`
+	CompletedAt         *time.Time `json:"completed_at,omitempty"`
+	EstimatedDuration   int        `json:"estimated_duration"` // Duration in minutes
+	ActualDuration      int        `json:"actual_duration"`    // Duration in minutes
+	CanModify           bool       `json:"can_modify"`
 }
 
 // NewExecutionPlan creates a new execution plan with validation
@@ -56,6 +72,40 @@ func NewExecutionPlan(name, description string, priority ExecutionPlanPriority) 
 		CanModify:   true,
 		Priority:    priority,
 		Steps:       make([]*ExecutionStep, 0),
+	}
+}
+
+// NewUnifiedExecutionPlan creates a unified execution plan with both planning intelligence and execution metadata
+func NewUnifiedExecutionPlan(
+	planID, name, description string,
+	priority ExecutionPlanPriority,
+	requestID, intent, category string,
+	confidence int,
+	reasoning string,
+	availableAgents, requiredAgents, agentGap []string,
+	planningType PlanningType,
+) *ExecutionPlan {
+	return &ExecutionPlan{
+		// Execution metadata
+		ID:          planID,
+		Name:        name,
+		Description: description,
+		Status:      ExecutionPlanStatusDraft,
+		CreatedAt:   time.Now(),
+		CanModify:   true,
+		Priority:    priority,
+		Steps:       make([]*ExecutionStep, 0),
+
+		// Planning intelligence
+		RequestID:       requestID,
+		Type:            planningType,
+		Intent:          intent,
+		Category:        category,
+		Confidence:      confidence,
+		Reasoning:       reasoning,
+		AvailableAgents: availableAgents,
+		RequiredAgents:  requiredAgents,
+		AgentGap:        agentGap,
 	}
 }
 
@@ -117,7 +167,7 @@ func (p *ExecutionPlan) GetStepsByStatus(status ExecutionStepStatus) []*Executio
 // GetNextStep returns the next step to be executed
 func (p *ExecutionPlan) GetNextStep() *ExecutionStep {
 	for _, step := range p.Steps {
-		if step.Status == ExecutionStepStatusPending || step.Status == ExecutionStepStatusAssigned {
+		if step.Status == ExecutionStepStatusAssigned {
 			return step
 		}
 	}
@@ -125,10 +175,16 @@ func (p *ExecutionPlan) GetNextStep() *ExecutionStep {
 }
 
 // Approve marks the plan as approved and sets the approval timestamp
-func (p *ExecutionPlan) Approve() {
+func (p *ExecutionPlan) Approve() error {
+	if p.Status != ExecutionPlanStatusDraft {
+		return fmt.Errorf("can only approve plans in DRAFT status, current status: %s", p.Status)
+	}
+
 	p.Status = ExecutionPlanStatusApproved
 	now := time.Now()
 	p.ApprovedAt = &now
+	p.CanModify = false // Lock plan after approval
+	return nil
 }
 
 // Start marks the plan as executing and sets the start timestamp
@@ -230,4 +286,46 @@ func (p ExecutionPlanPriority) IsValid() bool {
 	default:
 		return false
 	}
+}
+
+// CompletePlanning marks the planning phase as completed
+func (p *ExecutionPlan) CompletePlanning() error {
+	if p.PlanningCompletedAt != nil {
+		return fmt.Errorf("planning already completed")
+	}
+
+	now := time.Now()
+	p.PlanningCompletedAt = &now
+	return nil
+}
+
+// GetCompletePlanData returns complete plan data from unified entity
+func (p *ExecutionPlan) GetCompletePlanData() map[string]interface{} {
+	return map[string]interface{}{
+		"id":                    p.ID,
+		"name":                  p.Name,
+		"description":           p.Description,
+		"status":                p.Status,
+		"priority":              p.Priority,
+		"request_id":            p.RequestID,
+		"type":                  p.Type,
+		"intent":                p.Intent,
+		"category":              p.Category,
+		"confidence":            p.Confidence,
+		"reasoning":             p.Reasoning,
+		"available_agents":      p.AvailableAgents,
+		"required_agents":       p.RequiredAgents,
+		"agent_gap":             p.AgentGap,
+		"created_at":            p.CreatedAt,
+		"planning_completed_at": p.PlanningCompletedAt,
+		"approved_at":           p.ApprovedAt,
+		"started_at":            p.StartedAt,
+		"completed_at":          p.CompletedAt,
+		"steps":                 p.Steps,
+	}
+}
+
+// GenerateID generates a new unique ID for execution plans
+func GenerateID() string {
+	return uuid.New().String()
 }

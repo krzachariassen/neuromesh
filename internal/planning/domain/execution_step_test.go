@@ -17,11 +17,26 @@ func TestNewExecutionStep(t *testing.T) {
 	assert.Equal(t, name, step.Name)
 	assert.Equal(t, description, step.Description)
 	assert.Equal(t, assignedAgent, step.AssignedAgent)
-	assert.Equal(t, ExecutionStepStatusPending, step.Status)
+	assert.Equal(t, ExecutionStepStatusAssigned, step.Status) // Changed: Should be ASSIGNED when agent is provided
 	assert.True(t, step.CanModify)
 	assert.False(t, step.IsCritical)
 	assert.Equal(t, 0, step.RetryCount)
 	assert.Equal(t, 3, step.MaxRetries) // Default max retries
+}
+
+func TestNewExecutionStep_AgentRequired(t *testing.T) {
+	name := "Plan Task"
+	description := "A task that requires an agent assignment"
+	assignedAgent := "required-agent" // Agent must be assigned in plan-driven execution
+
+	step := NewExecutionStep(name, description, assignedAgent)
+
+	assert.NotEmpty(t, step.ID)
+	assert.Equal(t, name, step.Name)
+	assert.Equal(t, description, step.Description)
+	assert.Equal(t, assignedAgent, step.AssignedAgent)
+	assert.Equal(t, ExecutionStepStatusAssigned, step.Status) // Always ASSIGNED in plan-driven execution
+	assert.True(t, step.CanModify)
 }
 
 func TestExecutionStep_Validate(t *testing.T) {
@@ -37,7 +52,7 @@ func TestExecutionStep_Validate(t *testing.T) {
 				Name:          "Deploy",
 				Description:   "Deploy application",
 				AssignedAgent: "agent-1",
-				Status:        ExecutionStepStatusPending,
+				Status:        ExecutionStepStatusAssigned,
 			},
 			wantErr: false,
 		},
@@ -47,7 +62,7 @@ func TestExecutionStep_Validate(t *testing.T) {
 				Name:          "Deploy",
 				Description:   "Deploy application",
 				AssignedAgent: "agent-1",
-				Status:        ExecutionStepStatusPending,
+				Status:        ExecutionStepStatusAssigned,
 			},
 			wantErr: true,
 		},
@@ -57,7 +72,7 @@ func TestExecutionStep_Validate(t *testing.T) {
 				ID:            "step-123",
 				Description:   "Deploy application",
 				AssignedAgent: "agent-1",
-				Status:        ExecutionStepStatusPending,
+				Status:        ExecutionStepStatusAssigned,
 			},
 			wantErr: true,
 		},
@@ -67,7 +82,7 @@ func TestExecutionStep_Validate(t *testing.T) {
 				ID:          "step-123",
 				Name:        "Deploy",
 				Description: "Deploy application",
-				Status:      ExecutionStepStatusPending,
+				Status:      ExecutionStepStatusAssigned,
 			},
 			wantErr: true,
 		},
@@ -99,11 +114,10 @@ func TestExecutionStep_Validate(t *testing.T) {
 func TestExecutionStep_StatusTransitions(t *testing.T) {
 	step := NewExecutionStep("Deploy", "Deploy app", "agent-1")
 
-	// Test Assign
-	step.Assign()
+	// Test that step is already assigned when created with an agent
 	assert.Equal(t, ExecutionStepStatusAssigned, step.Status)
 
-	// Test Start
+	// Test Start (no need to call Assign() since step is already assigned)
 	err := step.Start()
 	assert.NoError(t, err)
 	assert.Equal(t, ExecutionStepStatusExecuting, step.Status)
@@ -120,22 +134,18 @@ func TestExecutionStep_StatusTransitions(t *testing.T) {
 }
 
 func TestExecutionStep_StatusTransitions_Invalid(t *testing.T) {
+	// Test invalid transition: try to complete without executing
 	step := NewExecutionStep("Deploy", "Deploy app", "agent-1")
+	assert.Equal(t, ExecutionStepStatusAssigned, step.Status)
 
-	// Cannot start without being assigned
-	err := step.Start()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "must be assigned")
-
-	// Cannot complete without executing
-	err = step.Complete("")
+	// Cannot complete without executing first
+	err := step.Complete("")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must be executing")
 }
 
 func TestExecutionStep_Fail(t *testing.T) {
 	step := NewExecutionStep("Deploy", "Deploy app", "agent-1")
-	step.Assign()
 	step.Start()
 
 	errorMsg := "Deployment failed"
@@ -154,7 +164,7 @@ func TestExecutionStep_Retry(t *testing.T) {
 	err := step.Retry()
 	assert.NoError(t, err)
 	assert.Equal(t, 1, step.RetryCount)
-	assert.Equal(t, ExecutionStepStatusPending, step.Status)
+	assert.Equal(t, ExecutionStepStatusAssigned, step.Status)
 
 	// Second retry
 	err = step.Retry()
@@ -211,7 +221,7 @@ func TestExecutionStep_CanBeModified(t *testing.T) {
 	assert.False(t, step.CanBeModified())
 
 	// Cannot modify when CanModify is false
-	step.Status = ExecutionStepStatusPending
+	step.Status = ExecutionStepStatusAssigned
 	step.CanModify = false
 	assert.False(t, step.CanBeModified())
 }

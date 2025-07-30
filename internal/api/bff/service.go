@@ -400,17 +400,17 @@ func (s *Service) buildAssistantMetadata(aiResponse *orchestratorApp.Orchestrato
 	}
 
 	// Add decision information if available
-	if aiResponse.PlanningResult != nil {
-		metadata["planning_type"] = string(aiResponse.PlanningResult.Type)
-		metadata["planning_id"] = aiResponse.PlanningResult.ID
-		metadata["planning_intent"] = aiResponse.PlanningResult.Intent
-		metadata["planning_confidence"] = aiResponse.PlanningResult.Confidence
-		metadata["planning_reasoning"] = aiResponse.PlanningResult.Reasoning
-		if len(aiResponse.PlanningResult.RequiredAgents) > 0 {
-			metadata["required_agents"] = aiResponse.PlanningResult.RequiredAgents
+	if aiResponse.ExecutionPlan != nil {
+		metadata["planning_type"] = string(aiResponse.ExecutionPlan.Type)
+		metadata["planning_id"] = aiResponse.ExecutionPlan.ID
+		metadata["planning_intent"] = aiResponse.ExecutionPlan.Intent
+		metadata["planning_confidence"] = aiResponse.ExecutionPlan.Confidence
+		metadata["planning_reasoning"] = aiResponse.ExecutionPlan.Reasoning
+		if len(aiResponse.ExecutionPlan.RequiredAgents) > 0 {
+			metadata["required_agents"] = aiResponse.ExecutionPlan.RequiredAgents
 		}
-		if len(aiResponse.PlanningResult.AgentGap) > 0 {
-			metadata["agent_gap"] = aiResponse.PlanningResult.AgentGap
+		if len(aiResponse.ExecutionPlan.AgentGap) > 0 {
+			metadata["agent_gap"] = aiResponse.ExecutionPlan.AgentGap
 		}
 	}
 

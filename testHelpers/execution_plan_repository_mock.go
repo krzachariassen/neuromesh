@@ -345,3 +345,53 @@ func (m *MockExecutionPlanRepository) AssertStoreSynthesisResultCalled(t interfa
 	// Call not found, assertion fails
 	t.Errorf("Expected StoreSynthesisResult to be called with planID '%s', but it was not. Recorded calls: %v", planID, m.calls)
 }
+
+// Delete removes an execution plan (unified repository method)
+func (m *MockExecutionPlanRepository) Delete(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("Delete(%s)", id))
+	delete(m.plans, id)
+	delete(m.steps, id)
+	return nil
+}
+
+// GetByRequestID retrieves execution plans by request ID (unified repository method)
+func (m *MockExecutionPlanRepository) GetByRequestID(ctx context.Context, requestID string) ([]*domain.ExecutionPlan, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("GetByRequestID(%s)", requestID))
+
+	var plans []*domain.ExecutionPlan
+	for _, plan := range m.plans {
+		if plan.RequestID == requestID {
+			plans = append(plans, plan)
+		}
+	}
+
+	return plans, nil
+}
+
+// LinkToRequest links execution plan to a request (unified repository method)
+func (m *MockExecutionPlanRepository) LinkToRequest(ctx context.Context, planID, requestID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("LinkToRequest(%s, %s)", planID, requestID))
+	if plan, exists := m.plans[planID]; exists {
+		plan.RequestID = requestID
+	}
+	return nil
+}
+
+// LinkToConversation links execution plan to a conversation (unified repository method)
+func (m *MockExecutionPlanRepository) LinkToConversation(ctx context.Context, planID, conversationID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("LinkToConversation(%s, %s)", planID, conversationID))
+	// Mock implementation - in real implementation this would create graph relationships
+	return nil
+}

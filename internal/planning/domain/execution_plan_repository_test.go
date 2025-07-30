@@ -118,6 +118,30 @@ func (m *MockExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Con
 	return args.Get(0).(*executionDomain.SynthesisResult), args.Error(1)
 }
 
+// Consolidated methods from PlanningResultRepository
+func (m *MockExecutionPlanRepository) GetByRequestID(ctx context.Context, requestID string) ([]*ExecutionPlan, error) {
+	args := m.Called(ctx, requestID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*ExecutionPlan), args.Error(1)
+}
+
+func (m *MockExecutionPlanRepository) Delete(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *MockExecutionPlanRepository) LinkToRequest(ctx context.Context, planID, requestID string) error {
+	args := m.Called(ctx, planID, requestID)
+	return args.Error(0)
+}
+
+func (m *MockExecutionPlanRepository) LinkToConversation(ctx context.Context, planID, conversationID string) error {
+	args := m.Called(ctx, planID, conversationID)
+	return args.Error(0)
+}
+
 func TestExecutionPlanRepository_Interface(t *testing.T) {
 	// This test ensures our mock implements the interface correctly
 	var repo ExecutionPlanRepository = &MockExecutionPlanRepository{}

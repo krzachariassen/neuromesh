@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	executionDomain "neuromesh/internal/execution/domain"
 	"neuromesh/internal/logging"
 	"neuromesh/internal/messaging"
 	"neuromesh/internal/orchestrator/infrastructure"
+	planningDomain "neuromesh/internal/planning/domain"
 	"neuromesh/testHelpers"
 )
 
@@ -57,25 +57,23 @@ func TestAIExecutionEngine_AgentResultStorage(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Directly test the storeAgentResult method by calling processAgentExecutionResponse
-		// The real AI will process the agent response and generate appropriate output
-		result, err := engine.processAgentExecutionResponse(ctx, agentResponse, "test request", "user-123", "test context")
+		// Create a mock execution step for the test
+		step := &planningDomain.ExecutionStep{
+			ID:            "step-1",
+			Name:          "test-step",
+			AssignedAgent: "test-agent",
+		}
+
+		// Test the processAgentExecutionResponse method with new signature
+		result, err := engine.processAgentExecutionResponse(ctx, agentResponse, step)
 
 		// Verify the method executed successfully
 		require.NoError(t, err)
 		assert.NotEmpty(t, result)
+		assert.Equal(t, "Successfully processed data", result)
 
-		// Verify agent result was stored
-		storedResults := mockRepo.GetStoredAgentResults()
-		assert.Len(t, storedResults, 1, "Should store one agent result")
-
-		// Verify stored result details
-		storedResult := storedResults[0]
-		assert.Equal(t, "test-agent", storedResult.AgentID)
-		assert.Equal(t, "Successfully processed data", storedResult.Content)
-		assert.Equal(t, "step-1", storedResult.ExecutionStepID)
-		assert.Equal(t, executionDomain.AgentResultStatusSuccess, storedResult.Status)
-		assert.Equal(t, 2.5, storedResult.Metadata["execution_time"])
-		assert.Equal(t, 100, storedResult.Metadata["records_processed"])
+		// Note: In the plan-driven approach, storeAgentResult is called separately
+		// during executeStep, not during processAgentExecutionResponse
+		// This test focuses on the response processing functionality
 	})
 }

@@ -11,7 +11,6 @@ import (
 type ExecutionStepStatus string
 
 const (
-	ExecutionStepStatusPending   ExecutionStepStatus = "PENDING"
 	ExecutionStepStatusAssigned  ExecutionStepStatus = "ASSIGNED"
 	ExecutionStepStatusExecuting ExecutionStepStatus = "EXECUTING"
 	ExecutionStepStatusCompleted ExecutionStepStatus = "COMPLETED"
@@ -42,13 +41,14 @@ type ExecutionStep struct {
 }
 
 // NewExecutionStep creates a new execution step with validation
+// In plan-driven execution, steps are always created with an assigned agent
 func NewExecutionStep(name, description, assignedAgent string) *ExecutionStep {
 	return &ExecutionStep{
 		ID:            uuid.New().String(),
 		Name:          name,
 		Description:   description,
 		AssignedAgent: assignedAgent,
-		Status:        ExecutionStepStatusPending,
+		Status:        ExecutionStepStatusAssigned,
 		CanModify:     true,
 		IsCritical:    false,
 		RetryCount:    0,
@@ -71,11 +71,6 @@ func (s *ExecutionStep) Validate() error {
 		return fmt.Errorf("invalid execution step status: %s", s.Status)
 	}
 	return nil
-}
-
-// Assign marks the step as assigned
-func (s *ExecutionStep) Assign() {
-	s.Status = ExecutionStepStatusAssigned
 }
 
 // Start marks the step as executing and sets the start timestamp
@@ -126,7 +121,7 @@ func (s *ExecutionStep) Retry() error {
 	}
 
 	s.RetryCount++
-	s.Status = ExecutionStepStatusPending
+	s.Status = ExecutionStepStatusAssigned // Reset to assigned since it already has an agent
 	s.ErrorMessage = ""
 	s.StartedAt = nil
 	s.CompletedAt = nil
@@ -148,13 +143,13 @@ func (s *ExecutionStep) IsComplete() bool {
 
 // CanBeModified returns true if the step can be modified
 func (s *ExecutionStep) CanBeModified() bool {
-	return s.CanModify && s.Status == ExecutionStepStatusPending
+	return s.CanModify && s.Status == ExecutionStepStatusAssigned
 }
 
 // IsValid validates the ExecutionStepStatus
 func (s ExecutionStepStatus) IsValid() bool {
 	switch s {
-	case ExecutionStepStatusPending, ExecutionStepStatusAssigned, ExecutionStepStatusExecuting,
+	case ExecutionStepStatusAssigned, ExecutionStepStatusExecuting,
 		ExecutionStepStatusCompleted, ExecutionStepStatusFailed, ExecutionStepStatusSkipped:
 		return true
 	default:

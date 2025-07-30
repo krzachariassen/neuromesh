@@ -18,12 +18,10 @@ func TestUnifiedArchitectureEnforcement(t *testing.T) {
 		ctx := context.Background()
 		aiProvider := testHelpers.SetupRealAIProvider(t)
 		executionPlanRepo := testHelpers.NewMockExecutionPlanRepository()
-		planningResultRepo := testHelpers.NewMockPlanningResultRepository()
 
-		planningEngine := NewAIPlanningEngineWithRepositories(
+		planningEngine := NewAIPlanningEngineWithRepository(
 			aiProvider,
 			executionPlanRepo,
-			planningResultRepo,
 		)
 
 		// Test simple request that would previously use RESPOND_DIRECTLY
@@ -48,7 +46,7 @@ func TestUnifiedArchitectureEnforcement(t *testing.T) {
 
 		t.Logf("\n✅ Planning Result:")
 		t.Logf("  Type: %s", planningResult.Type)
-		t.Logf("  ExecutionPlanID: %s", planningResult.ExecutionPlanID)
+		t.Logf("  ExecutionPlanID: %s", planningResult.ID)
 		t.Logf("  RequiredAgents: %v", planningResult.RequiredAgents)
 
 		// Critical assertions for unified architecture
@@ -58,7 +56,7 @@ func TestUnifiedArchitectureEnforcement(t *testing.T) {
 		assert.Equal(t, "EXECUTE", string(planningResult.Type),
 			"All requests should result in EXECUTE type with execution plans")
 
-		assert.NotEmpty(t, planningResult.ExecutionPlanID,
+		assert.NotEmpty(t, planningResult.ID,
 			"Every request must have an execution plan ID")
 
 		assert.NotEmpty(t, planningResult.RequiredAgents,
@@ -73,17 +71,15 @@ func TestUnifiedArchitectureEnforcement(t *testing.T) {
 		t.Logf("  ✅ Generic agent assigned for general questions")
 	})
 
-	t.Run("should handle complex requests through same architecture", func(t *testing.T) {
-		// Arrange
+	t.Run("should create execution plans for complex multi-agent requests", func(t *testing.T) {
+		// Arrange: Complex request requiring multiple agents
 		ctx := context.Background()
 		aiProvider := testHelpers.SetupRealAIProvider(t)
 		executionPlanRepo := testHelpers.NewMockExecutionPlanRepository()
-		planningResultRepo := testHelpers.NewMockPlanningResultRepository()
 
-		planningEngine := NewAIPlanningEngineWithRepositories(
+		planningEngine := NewAIPlanningEngineWithRepository(
 			aiProvider,
 			executionPlanRepo,
-			planningResultRepo,
 		)
 
 		// Complex healthcare request
@@ -110,14 +106,14 @@ func TestUnifiedArchitectureEnforcement(t *testing.T) {
 
 		t.Logf("\n✅ Complex Planning Result:")
 		t.Logf("  Type: %s", planningResult.Type)
-		t.Logf("  ExecutionPlanID: %s", planningResult.ExecutionPlanID)
+		t.Logf("  ExecutionPlanID: %s", planningResult.ID)
 		t.Logf("  RequiredAgents: %v", planningResult.RequiredAgents)
 
 		// Same architecture for complex requests
 		assert.Equal(t, "EXECUTE", string(planningResult.Type),
 			"Complex requests should also use EXECUTE type")
 
-		assert.NotEmpty(t, planningResult.ExecutionPlanID,
+		assert.NotEmpty(t, planningResult.ID,
 			"Complex requests must have execution plans")
 
 		assert.GreaterOrEqual(t, len(planningResult.RequiredAgents), 1,

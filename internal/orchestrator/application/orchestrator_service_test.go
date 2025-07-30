@@ -18,9 +18,9 @@ type MockAIPlanningEngine struct {
 	mock.Mock
 }
 
-func (m *MockAIPlanningEngine) CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string) (*domain.PlanningResult, error) {
+func (m *MockAIPlanningEngine) CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string) (*domain.ExecutionPlan, error) {
 	args := m.Called(ctx, userInput, userID, agentContext, requestID)
-	return args.Get(0).(*domain.PlanningResult), args.Error(1)
+	return args.Get(0).(*domain.ExecutionPlan), args.Error(1)
 }
 
 func (m *MockAIPlanningEngine) LinkPlanningResultToConversation(ctx context.Context, planningResultID, conversationID string) error {
@@ -64,23 +64,22 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 		// Set up mock expectations
 		mockGraphExplorer.On("GetAgentContext", ctx).Return("Available agents: generic-agent", nil)
 
-		planningResult := &domain.PlanningResult{
-			ID:              "planning-001",
-			Type:            domain.PlanningTypeExecute,
-			ExecutionPlanID: "exec-plan-001",
-			RequiredAgents:  []string{"generic-agent"},
-			Intent:          "weather_inquiry",
-			Category:        "general_information",
-			Confidence:      95,
-			Reasoning:       "Simple weather question for generic agent",
+		executionPlan := &domain.ExecutionPlan{
+			ID:             "planning-001",
+			Type:           domain.PlanningTypeExecute,
+			RequiredAgents: []string{"generic-agent"},
+			Intent:         "weather_inquiry",
+			Category:       "general_information",
+			Confidence:     95,
+			Reasoning:      "Simple weather question for generic agent",
 		}
 
-		mockPlanningEngine.On("CreateExecutionPlan", ctx, "What is the weather like today?", "user-123", "Available agents: generic-agent", "msg-001").Return(planningResult, nil)
+		mockPlanningEngine.On("CreateExecutionPlan", ctx, "What is the weather like today?", "user-123", "Available agents: generic-agent", "msg-001").Return(executionPlan, nil)
 		mockPlanningEngine.On("LinkPlanningResultToConversation", ctx, "planning-001", "conv-001").Return(nil)
-		mockConversationService.On("LinkExecutionPlan", ctx, "conv-001", "exec-plan-001").Return(nil)
+		mockConversationService.On("LinkExecutionPlan", ctx, "conv-001", "planning-001").Return(nil)
 
 		// Mock the background execution that happens after returning the response
-		mockExecutionEngine.On("ExecuteWithAgents", mock.Anything, mock.AnythingOfType("string"), "What is the weather like today?", "user-123", "Available agents: generic-agent", "exec-plan-001").Return("Execution completed", nil)
+		mockExecutionEngine.On("ExecuteWithAgents", mock.Anything, mock.AnythingOfType("string"), "What is the weather like today?", "user-123", "Available agents: generic-agent", "planning-001").Return("Execution completed", nil)
 
 		// Create orchestrator with Phase 3 pure orchestration
 		orchestrator := NewOrchestratorService(
@@ -106,7 +105,7 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 		// Assert: Should return execution plan ID immediately (pure orchestration)
 		require.NoError(t, err)
 		assert.True(t, result.Success)
-		assert.Equal(t, "exec-plan-001", result.ExecutionPlanID)
+		assert.Equal(t, "planning-001", result.ExecutionPlanID)
 		assert.Equal(t, "executing", result.Status)
 		assert.Empty(t, result.Message, "Pure orchestration should not return immediate message")
 
@@ -128,17 +127,16 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 		// Set up mock expectations for clarification
 		mockGraphExplorer.On("GetAgentContext", ctx).Return("Available agents: generic-agent", nil)
 
-		planningResult := &domain.PlanningResult{
-			ID:                    "planning-002",
-			Type:                  domain.PlanningTypeClarify,
-			ClarificationQuestion: "What type of analysis would you like me to perform?",
-			Intent:                "unclear_request",
-			Category:              "clarification",
-			Confidence:            40,
-			Reasoning:             "Request is too vague to determine specific action",
+		executionPlan := &domain.ExecutionPlan{
+			ID:         "planning-002",
+			Type:       domain.PlanningTypeClarify,
+			Reasoning:  "What type of analysis would you like me to perform? Request is too vague to determine specific action",
+			Intent:     "unclear_request",
+			Category:   "clarification",
+			Confidence: 40,
 		}
 
-		mockPlanningEngine.On("CreateExecutionPlan", ctx, "Do something", "user-123", "Available agents: generic-agent", "msg-002").Return(planningResult, nil)
+		mockPlanningEngine.On("CreateExecutionPlan", ctx, "Do something", "user-123", "Available agents: generic-agent", "msg-002").Return(executionPlan, nil)
 		mockPlanningEngine.On("LinkPlanningResultToConversation", ctx, "planning-002", "conv-001").Return(nil)
 
 		// Create orchestrator
@@ -165,9 +163,9 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 		// Assert: Should return clarification
 		require.NoError(t, err)
 		assert.True(t, result.Success)
-		assert.Equal(t, domain.PlanningTypeClarify, result.PlanningResult.Type)
-		assert.Equal(t, "What type of analysis would you like me to perform?", result.Message)
-		assert.Empty(t, result.ExecutionPlanID, "Clarification should not create execution plan")
+		assert.Equal(t, domain.PlanningTypeClarify, result.ExecutionPlan.Type)
+		assert.Equal(t, "What type of analysis would you like me to perform? Request is too vague to determine specific action", result.Message)
+		assert.Equal(t, "planning-002", result.ExecutionPlanID, "Clarification should also create execution plan in unified approach")
 
 		// Verify mocks
 		mockGraphExplorer.AssertExpectations(t)
