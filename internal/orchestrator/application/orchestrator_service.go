@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	executionDomain "neuromesh/internal/execution/domain"
 	"neuromesh/internal/logging"
@@ -202,37 +201,6 @@ func (ors *OrchestratorService) linkPlanningResultToConversation(ctx context.Con
 
 // NOTE: ProcessConversation and AnalyzeConversationPatterns methods removed
 // Following YAGNI principles - we're not implementing these features yet
-
-// isOrchestratorMetaQuery detects if a user input is a meta-query about the orchestrator system
-// that should be answered directly rather than routed through agents
-func (ors *OrchestratorService) isOrchestratorMetaQuery(userInput string) bool {
-	lowercaseInput := strings.ToLower(userInput)
-
-	// Define meta-query patterns that should be handled directly by orchestrator
-	metaQueryPatterns := []string{
-		"what agents",
-		"list agents",
-		"show agents",
-		"available agents",
-		"agent capabilities",
-		"system status",
-		"orchestrator status",
-		"are you healthy",
-		"health check",
-		"what can you do",
-		"help",
-		"how do you work",
-		"what is your purpose",
-	}
-
-	for _, pattern := range metaQueryPatterns {
-		if strings.Contains(lowercaseInput, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
 
 // handleMetaQuery provides simple responses to orchestrator meta-queries
 // Following YAGNI - keeping it simple for now
