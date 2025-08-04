@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	pb "github.com/ztdp/agents/text-translator/proto/api"
 
@@ -297,36 +295,6 @@ func TestNewAINativeAgent(t *testing.T) {
 	assert.Equal(t, config.OrchestratorAddress, agent.config.OrchestratorAddress)
 	assert.False(t, agent.registered)
 	assert.Empty(t, agent.sessionID)
-}
-
-// TDD RED: Test for agent heartbeat functionality
-func TestAINativeAgent_StartHeartbeat(t *testing.T) {
-	// Arrange
-	agent := NewAINativeAgent(Config{
-		AgentID:             "test-heartbeat-agent",
-		Name:                "Test Heartbeat Agent",
-		OrchestratorAddress: "localhost:50051",
-		ReconnectInterval:   time.Second,
-	})
-
-	// Create a context that will be cancelled after testing
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	// TDD RED: This method doesn't exist yet, should fail
-	heartbeatSent := make(chan bool, 1)
-	err := agent.StartHeartbeat(ctx, heartbeatSent)
-
-	// Assert
-	assert.NoError(t, err, "StartHeartbeat should not return an error")
-
-	// Wait for at least one heartbeat to be sent
-	select {
-	case <-heartbeatSent:
-		// Success - heartbeat was sent
-	case <-time.After(35 * time.Second):
-		t.Fatal("No heartbeat was sent within 35 seconds")
-	}
 }
 
 // func TestAINativeAgent_HeartbeatInterval(t *testing.T) {

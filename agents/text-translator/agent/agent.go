@@ -341,16 +341,6 @@ func (a *AINativeAgent) createCompletionMessage(instructionID, correlationID, co
 	return completion
 }
 
-// Legacy heartbeat methods - DEPRECATED in favor of dedicated infrastructure processes
-// StartHeartbeat - DEPRECATED: Use StartInfrastructure() instead
-func (a *AINativeAgent) StartHeartbeat(ctx context.Context, notificationChan chan<- bool) error {
-	log.Printf("⚠️ DEPRECATED: StartHeartbeat called - use StartInfrastructure() instead")
-	// For backward compatibility, start the infrastructure
-	return a.StartInfrastructure(ctx)
-}
-
-// Legacy heartbeat methods - REMOVED in favor of dedicated infrastructure processes
-
 // processConversationMessage handles ONLY AI conversation messages (instructions/completions)
 func (a *AINativeAgent) processConversationMessage(msg *pb.ConversationMessage) *pb.ConversationMessage {
 	log.Printf("📨 Processing AI conversation message: %s (type: %v)", msg.MessageId, msg.Type)
