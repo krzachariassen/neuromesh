@@ -75,6 +75,39 @@ func (p *OpenAIProvider) CallAI(ctx context.Context, systemPrompt, userPrompt st
 		"temperature": p.config.Temperature,
 	}
 
+	return p.makeOpenAIRequest(ctx, payload)
+}
+
+// CallAIWithConversation makes an AI inference call with full conversation history
+// This enables clarification flows where AI needs context to understand user responses
+func (p *OpenAIProvider) CallAIWithConversation(ctx context.Context, messages []*domain.AIConversationMessage) (string, error) {
+	if p.logger != nil {
+		p.logger.Info("Making OpenAI conversation API call", "model", p.config.Model, "message_count", len(messages))
+	}
+
+	// Convert domain messages to OpenAI format
+	openAIMessages := make([]map[string]string, len(messages))
+	for i, msg := range messages {
+		openAIMessages[i] = map[string]string{
+			"role":    msg.Role,
+			"content": msg.Content,
+		}
+	}
+
+	// Build the request payload
+	payload := map[string]interface{}{
+		"model":       p.config.Model,
+		"messages":    openAIMessages,
+		"max_tokens":  p.config.MaxTokens,
+		"temperature": p.config.Temperature,
+	}
+
+	return p.makeOpenAIRequest(ctx, payload)
+}
+
+// makeOpenAIRequest handles the common HTTP request logic for OpenAI API calls
+func (p *OpenAIProvider) makeOpenAIRequest(ctx context.Context, payload map[string]interface{}) (string, error) {
+
 	// Marshal the payload
 	jsonData, err := json.Marshal(payload)
 	if err != nil {

@@ -37,7 +37,8 @@ func NewAIPlanningEngineWithRepository(aiProvider aiDomain.AIProvider, execution
 
 // CreateExecutionPlan analyzes user request and creates unified execution plan
 // Returns unified ExecutionPlan (consolidates former PlanningResult + ExecutionPlan creation)
-func (e *AIPlanningEngine) CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string) (*domain.ExecutionPlan, error) {
+// Supports optional conversation history for context-aware planning (variadic parameter for backward compatibility)
+func (e *AIPlanningEngine) CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string, conversationHistory ...[]*aiDomain.AIConversationMessage) (*domain.ExecutionPlan, error) {
 	// Parse available agents from agent context - get names for display
 	availableAgentNames, _ := e.parseAvailableAgentsWithIDs(agentContext)
 
@@ -55,16 +56,23 @@ Your planning must determine:
 
 The available agents are provided in JSON format. Parse the JSON to extract exact agent "id" fields and "capabilities".
 
+CAPABILITY GAP ANALYSIS:
+Before choosing EXECUTE, perform this critical analysis:
+1. Parse user request to identify ALL required capabilities (e.g., "word count", "translation", "deployment")
+2. Check each available agent's capabilities against required capabilities
+3. If ANY required capability is missing from available agents, choose CLARIFY instead of EXECUTE
+4. Example: If user wants "count words and translate", but only text-processor (word count) is available and no translation agent exists, this is a capability gap - use CLARIFY
+
 PLANNING_TYPES:
-- EXECUTE: Create execution plan using available agents (PREFERRED - use available agents for requests)
-- CLARIFY: Ask for clarification when request is unclear or confidence < 80%
+- EXECUTE: Create execution plan using available agents (ONLY when ALL required capabilities are available)
+- CLARIFY: Ask for clarification when request is unclear, confidence < 80%, OR when required capabilities are missing from available agents
 
 UNIFIED_ARCHITECTURE_RULES:
-- ALL requests should use EXECUTE with execution plans
 - Parse the JSON to find agents with matching capabilities for the user request
-- Use exact agent "id" from the JSON (like ""exact-agent-id-from-json")
-- Only use CLARIFY when the request is genuinely ambiguous or unclear
-- NO direct responses - everything goes through agent execution for consistency
+- Use exact agent "id" from the JSON (like "exact-agent-id-from-json")
+- CRITICAL: Use CLARIFY when required capabilities are missing from available agents
+- NO workaround execution plans - if capability is missing, clarify with user first
+- Use descriptive clarification that explains what's available vs what's needed
 
 Respond in this EXACT format:
 
@@ -75,7 +83,7 @@ Confidence: [0-100]
 Available_Agents: [list agent names from JSON]
 Required_Agents: [list specific agent IDs from JSON that match the request capabilities]
 Planning_Type: [EXECUTE|CLARIFY]
-Reasoning: [detailed reasoning for planning decisions - this is internal analysis, NOT user-facing content]
+Reasoning: [detailed reasoning for planning decisions - include capability gap analysis]
 
 [If EXECUTE]:
 EXECUTION_PLAN:
@@ -92,14 +100,36 @@ EXECUTION_PLAN:
 
 [If CLARIFY]:
 CLARIFICATION:
-[question to ask user for clarification]`
+[contextual question explaining available capabilities vs required capabilities, with specific options]`
 
 	userPrompt := fmt.Sprintf(`User ID: %s
 Request: %s
 
 Create a comprehensive execution plan for this request.`, userID, userInput)
 
-	response, err := e.aiProvider.CallAI(ctx, systemPrompt, userPrompt)
+	var response string
+	var err error
+
+	// Use conversation-aware AI if conversation history is provided
+	if len(conversationHistory) > 0 && len(conversationHistory[0]) > 0 {
+		// Build conversation with system prompt and user context
+		conversation := []*aiDomain.AIConversationMessage{
+			aiDomain.NewAIConversationMessage("system", systemPrompt),
+		}
+
+		// Add existing conversation history
+		conversation = append(conversation, conversationHistory[0]...)
+
+		// Add current user request as final message
+		conversation = append(conversation, aiDomain.NewAIConversationMessage("user", userPrompt))
+
+		// Call AI with full conversation context
+		response, err = e.aiProvider.CallAIWithConversation(ctx, conversation)
+	} else {
+		// Fallback to standard single-turn AI call for backward compatibility
+		response, err = e.aiProvider.CallAI(ctx, systemPrompt, userPrompt)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("AI planning call failed: %w", err)
 	}
@@ -136,7 +166,6 @@ Create a comprehensive execution plan for this request.`, userID, userInput)
 			reasoning,
 			availableAgentNames,
 			requiredAgents,
-			calculateAgentGap(availableAgentNames, requiredAgents),
 			domain.PlanningTypeExecute,
 		)
 
@@ -175,7 +204,6 @@ Create a comprehensive execution plan for this request.`, userID, userInput)
 			reasoning,
 			availableAgentNames,
 			requiredAgents,
-			calculateAgentGap(availableAgentNames, requiredAgents),
 			domain.PlanningTypeClarify,
 		)
 
@@ -378,30 +406,13 @@ func (e *AIPlanningEngine) parseAvailableAgentsWithIDs(agentContext string) ([]s
 
 // LinkPlanningResultToConversation links a planning result to a conversation
 // This allows the orchestrator to coordinate cross-domain relationships
+// NOTE: For execution plans, this is now a no-op as Conversation domain owns the relationship
 func (e *AIPlanningEngine) LinkPlanningResultToConversation(ctx context.Context, planningResultID, conversationID string) error {
 	if e.executionPlanRepo == nil {
 		return fmt.Errorf("execution plan repository not available")
 	}
 
+	// Delegate to repository - for execution plans this will be a no-op to avoid duplicate relationships
+	// Conversation domain handles conversation->execution_plan via LinkExecutionPlan
 	return e.executionPlanRepo.LinkToConversation(ctx, planningResultID, conversationID)
-}
-
-// calculateAgentGap determines missing required agents
-func calculateAgentGap(availableAgents, requiredAgents []string) []string {
-	var gap []string
-
-	// Create map of available agents for faster lookup
-	availableMap := make(map[string]bool)
-	for _, agent := range availableAgents {
-		availableMap[agent] = true
-	}
-
-	// Find required agents that are not available
-	for _, required := range requiredAgents {
-		if !availableMap[required] {
-			gap = append(gap, required)
-		}
-	}
-
-	return gap
 }

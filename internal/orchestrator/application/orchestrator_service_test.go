@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	aiDomain "neuromesh/internal/ai/domain"
 	"neuromesh/internal/logging"
 	domain "neuromesh/internal/planning/domain"
 	"neuromesh/testHelpers"
@@ -18,8 +19,8 @@ type MockAIPlanningEngine struct {
 	mock.Mock
 }
 
-func (m *MockAIPlanningEngine) CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string) (*domain.ExecutionPlan, error) {
-	args := m.Called(ctx, userInput, userID, agentContext, requestID)
+func (m *MockAIPlanningEngine) CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string, conversationHistory ...[]*aiDomain.AIConversationMessage) (*domain.ExecutionPlan, error) {
+	args := m.Called(ctx, userInput, userID, agentContext, requestID, conversationHistory)
 	return args.Get(0).(*domain.ExecutionPlan), args.Error(1)
 }
 
@@ -58,7 +59,6 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 		mockGraphExplorer := &MockGraphExplorer{}
 		mockExecutionEngine := &MockAIExecutionEngine{}
 		mockConversationService := testHelpers.NewMockConversationService()
-		mockResultSynthesizer := testHelpers.NewMockResultSynthesizer()
 		mockPlanRepository := testHelpers.NewMockExecutionPlanRepository()
 
 		// Set up mock expectations
@@ -74,8 +74,9 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 			Reasoning:      "Simple weather question for generic agent",
 		}
 
-		mockPlanningEngine.On("CreateExecutionPlan", ctx, "What is the weather like today?", "user-123", "Available agents: generic-agent", "msg-001").Return(executionPlan, nil)
+		mockPlanningEngine.On("CreateExecutionPlan", ctx, "What is the weather like today?", "user-123", "Available agents: generic-agent", "msg-001", mock.Anything).Return(executionPlan, nil)
 		mockPlanningEngine.On("LinkPlanningResultToConversation", ctx, "planning-001", "conv-001").Return(nil)
+		mockConversationService.On("GetConversationHistory", ctx, "conv-001").Return([]*aiDomain.AIConversationMessage{}, nil)
 		mockConversationService.On("LinkExecutionPlan", ctx, "conv-001", "planning-001").Return(nil)
 
 		// Mock the background execution that happens after returning the response
@@ -87,7 +88,6 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 			mockGraphExplorer,
 			mockExecutionEngine,
 			mockConversationService,
-			mockResultSynthesizer,
 			mockPlanRepository,
 			logger,
 		)
@@ -121,23 +121,24 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 		mockGraphExplorer := &MockGraphExplorer{}
 		mockExecutionEngine := &MockAIExecutionEngine{}
 		mockConversationService := testHelpers.NewMockConversationService()
-		mockResultSynthesizer := testHelpers.NewMockResultSynthesizer()
 		mockPlanRepository := testHelpers.NewMockExecutionPlanRepository()
 
 		// Set up mock expectations for clarification
 		mockGraphExplorer.On("GetAgentContext", ctx).Return("Available agents: generic-agent", nil)
 
 		executionPlan := &domain.ExecutionPlan{
-			ID:         "planning-002",
-			Type:       domain.PlanningTypeClarify,
-			Reasoning:  "What type of analysis would you like me to perform? Request is too vague to determine specific action",
-			Intent:     "unclear_request",
-			Category:   "clarification",
-			Confidence: 40,
+			ID:          "planning-002",
+			Type:        domain.PlanningTypeClarify,
+			Description: "What type of analysis would you like me to perform? Request is too vague to determine specific action",
+			Reasoning:   "What type of analysis would you like me to perform? Request is too vague to determine specific action",
+			Intent:      "unclear_request",
+			Category:    "clarification",
+			Confidence:  40,
 		}
 
-		mockPlanningEngine.On("CreateExecutionPlan", ctx, "Do something", "user-123", "Available agents: generic-agent", "msg-002").Return(executionPlan, nil)
+		mockPlanningEngine.On("CreateExecutionPlan", ctx, "Do something", "user-123", "Available agents: generic-agent", "msg-002", mock.Anything).Return(executionPlan, nil)
 		mockPlanningEngine.On("LinkPlanningResultToConversation", ctx, "planning-002", "conv-001").Return(nil)
+		mockConversationService.On("GetConversationHistory", ctx, "conv-001").Return([]*aiDomain.AIConversationMessage{}, nil)
 
 		// Create orchestrator
 		orchestrator := NewOrchestratorService(
@@ -145,7 +146,6 @@ func TestOrchestratorService_PureOrchestrationPhase3(t *testing.T) {
 			mockGraphExplorer,
 			mockExecutionEngine,
 			mockConversationService,
-			mockResultSynthesizer,
 			mockPlanRepository,
 			logger,
 		)

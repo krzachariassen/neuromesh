@@ -22,7 +22,6 @@ func TestUnifiedExecutionPlan_TDD(t *testing.T) {
 		reasoning := "Text processing request with clear intent"
 		availableAgents := []string{"text-processor-001", "analyzer-002"}
 		requiredAgents := []string{"text-processor-001"}
-		agentGap := []string{} // No gap
 		planningType := PlanningTypeExecute
 
 		// Create unified execution plan with both planning and execution data
@@ -38,7 +37,6 @@ func TestUnifiedExecutionPlan_TDD(t *testing.T) {
 			reasoning,
 			availableAgents,
 			requiredAgents,
-			agentGap,
 			planningType,
 		)
 
@@ -83,8 +81,9 @@ func TestUnifiedExecutionPlan_TDD(t *testing.T) {
 		if len(plan.RequiredAgents) != len(requiredAgents) {
 			t.Errorf("Expected %d required agents, got %d", len(requiredAgents), len(plan.RequiredAgents))
 		}
-		if len(plan.AgentGap) != len(agentGap) {
-			t.Errorf("Expected %d agent gap, got %d", len(agentGap), len(plan.AgentGap))
+		// AgentGap should be empty since AI handles gap analysis in reasoning
+		if len(plan.AgentGap) != 0 {
+			t.Errorf("Expected empty agent gap, got %d items", len(plan.AgentGap))
 		}
 	})
 
@@ -102,7 +101,6 @@ func TestUnifiedExecutionPlan_TDD(t *testing.T) {
 			"test reasoning",
 			[]string{"agent1"},
 			[]string{"agent1"},
-			[]string{},
 			PlanningTypeExecute,
 		)
 
@@ -153,7 +151,6 @@ func TestUnifiedExecutionPlan_TDD(t *testing.T) {
 			"Unified entity reduces complexity",
 			[]string{"agent1", "agent2"},
 			[]string{"agent1"},
-			[]string{},
 			PlanningTypeExecute,
 		)
 

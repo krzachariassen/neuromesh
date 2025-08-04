@@ -105,17 +105,17 @@ func (m *MockExecutionPlanRepository) GetPlanIDByCorrelationID(ctx context.Conte
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error {
-	args := m.Called(ctx, result)
+func (m *MockExecutionPlanRepository) StoreConversationSummary(ctx context.Context, summary *executionDomain.ConversationSummary) error {
+	args := m.Called(ctx, summary)
 	return args.Error(0)
 }
 
-func (m *MockExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error) {
+func (m *MockExecutionPlanRepository) GetConversationSummaryByPlanID(ctx context.Context, planID string) (*executionDomain.ConversationSummary, error) {
 	args := m.Called(ctx, planID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*executionDomain.SynthesisResult), args.Error(1)
+	return args.Get(0).(*executionDomain.ConversationSummary), args.Error(1)
 }
 
 // Consolidated methods from PlanningResultRepository
@@ -140,6 +140,11 @@ func (m *MockExecutionPlanRepository) LinkToRequest(ctx context.Context, planID,
 func (m *MockExecutionPlanRepository) LinkToConversation(ctx context.Context, planID, conversationID string) error {
 	args := m.Called(ctx, planID, conversationID)
 	return args.Error(0)
+}
+
+func (m *MockExecutionPlanRepository) GetConversationIDByPlanID(ctx context.Context, planID string) (string, error) {
+	args := m.Called(ctx, planID)
+	return args.String(0), args.Error(1)
 }
 
 func TestExecutionPlanRepository_Interface(t *testing.T) {

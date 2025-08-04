@@ -310,32 +310,32 @@ func (m *MockExecutionPlanRepository) GetPlanIDByCorrelationID(ctx context.Conte
 	return "", nil
 }
 
-// StoreSynthesisResult stores a synthesis result (mock implementation)
-func (m *MockExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error {
+// StoreConversationSummary stores a conversation summary (mock implementation)
+func (m *MockExecutionPlanRepository) StoreConversationSummary(ctx context.Context, summary *executionDomain.ConversationSummary) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.calls = append(m.calls, fmt.Sprintf("StoreSynthesisResult(%s)", result.PlanID))
+	m.calls = append(m.calls, fmt.Sprintf("StoreConversationSummary(%s)", summary.PlanID))
 	// In a real mock we might store this, but for now just record the call
 	return nil
 }
 
-// GetSynthesisResultByPlanID retrieves a synthesis result by plan ID (mock implementation)
-func (m *MockExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error) {
+// GetConversationSummaryByPlanID retrieves a conversation summary by plan ID (mock implementation)
+func (m *MockExecutionPlanRepository) GetConversationSummaryByPlanID(ctx context.Context, planID string) (*executionDomain.ConversationSummary, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	m.calls = append(m.calls, fmt.Sprintf("GetSynthesisResultByPlanID(%s)", planID))
-	// Mock returns nil - no synthesis result found
+	m.calls = append(m.calls, fmt.Sprintf("GetConversationSummaryByPlanID(%s)", planID))
+	// Mock returns nil - no conversation summary found
 	return nil, nil
 }
 
-// AssertStoreSynthesisResultCalled verifies that StoreSynthesisResult was called for the given planID
-func (m *MockExecutionPlanRepository) AssertStoreSynthesisResultCalled(t interface {
+// AssertStoreConversationSummaryCalled verifies that StoreConversationSummary was called for the given planID
+func (m *MockExecutionPlanRepository) AssertStoreConversationSummaryCalled(t interface {
 	Errorf(format string, args ...interface{})
 }, planID string) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	expectedCall := fmt.Sprintf("StoreSynthesisResult(%s)", planID)
+	expectedCall := fmt.Sprintf("StoreConversationSummary(%s)", planID)
 	for _, call := range m.calls {
 		if call == expectedCall {
 			return // Found the call, assertion passes
@@ -343,7 +343,7 @@ func (m *MockExecutionPlanRepository) AssertStoreSynthesisResultCalled(t interfa
 	}
 
 	// Call not found, assertion fails
-	t.Errorf("Expected StoreSynthesisResult to be called with planID '%s', but it was not. Recorded calls: %v", planID, m.calls)
+	t.Errorf("Expected StoreConversationSummary to be called with planID '%s', but it was not. Recorded calls: %v", planID, m.calls)
 }
 
 // Delete removes an execution plan (unified repository method)
@@ -386,12 +386,23 @@ func (m *MockExecutionPlanRepository) LinkToRequest(ctx context.Context, planID,
 	return nil
 }
 
-// LinkToConversation links execution plan to a conversation (unified repository method)
+// LinkToConversation is deprecated - use Conversation domain's LinkExecutionPlan instead
+// This mock now does nothing to reflect the architectural decision
 func (m *MockExecutionPlanRepository) LinkToConversation(ctx context.Context, planID, conversationID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.calls = append(m.calls, fmt.Sprintf("LinkToConversation(%s, %s)", planID, conversationID))
-	// Mock implementation - in real implementation this would create graph relationships
+	// No-op: Conversation domain owns the relationship
 	return nil
+}
+
+// GetConversationIDByPlanID gets conversation ID linked to execution plan
+func (m *MockExecutionPlanRepository) GetConversationIDByPlanID(ctx context.Context, planID string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("GetConversationIDByPlanID(%s)", planID))
+	// Mock implementation - return mock conversation ID for testing
+	return "mock-conversation-id", nil
 }

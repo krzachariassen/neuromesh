@@ -47,6 +47,10 @@ func (m *mockGraph) GetEdgesWithTargets(ctx context.Context, nodeType, nodeID st
 	return []map[string]interface{}{}, nil
 }
 
+func (m *mockGraph) GetEdgesWithSources(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
+	return []map[string]interface{}{}, nil
+}
+
 func (m *mockGraph) UpdateEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string, properties map[string]interface{}) error {
 	return nil
 }

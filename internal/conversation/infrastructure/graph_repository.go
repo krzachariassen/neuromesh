@@ -42,7 +42,7 @@ func (r *ConversationGraphRepository) GetConversationGraph(ctx context.Context, 
 
 	// Query Neo4j for all nodes and relationships related to this conversation
 	// Following our established graph schema: User -> Conversation -> Decision -> ExecutionPlan
-	// IMPORTANT: Include cross-domain relationships (LINKED_TO_PLAN)
+	// IMPORTANT: Include cross-domain relationships (HAS_EXECUTION_PLAN)
 	query := `
 		MATCH (c:Conversation {id: $conversationId})
 		OPTIONAL MATCH (c)-[r1:CREATED_BY]-(u:User)
@@ -52,7 +52,7 @@ func (r *ConversationGraphRepository) GetConversationGraph(ctx context.Context, 
 		OPTIONAL MATCH (es)-[r5:EXECUTED_BY]-(a:Agent)
 		OPTIONAL MATCH (a)-[r6:PRODUCED]-(result:Result)
 		OPTIONAL MATCH (c)-[r7:CONTAINS]-(m:ConversationMessage)
-		OPTIONAL MATCH (c)-[r8:LINKED_TO_PLAN]-(linkedPlan:ExecutionPlan)
+		OPTIONAL MATCH (c)-[r8:HAS_EXECUTION_PLAN]-(linkedPlan:ExecutionPlan)
 		
 		RETURN c, u, d, ep, es, a, result, m, linkedPlan, r1, r2, r3, r4, r5, r6, r7, r8
 	`
@@ -299,8 +299,8 @@ func (r *ConversationGraphRepository) convertRelationshipType(neo4jType string) 
 		return "produced"
 	case "CONTAINS":
 		return "contains"
-	case "LINKED_TO_PLAN":
-		return "linked_to_plan"
+	case "HAS_EXECUTION_PLAN":
+		return "has_execution_plan"
 	default:
 		return neo4jType
 	}

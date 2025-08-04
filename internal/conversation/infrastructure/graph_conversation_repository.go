@@ -21,7 +21,7 @@ const (
 	RelationshipContainsMessage       = "CONTAINS_MESSAGE"
 	RelationshipInSession             = "IN_SESSION"
 	RelationshipParticipantIn         = "PARTICIPANT_IN"
-	RelationshipLinkedToPlan          = "LINKED_TO_PLAN"
+	RelationshipHasExecutionPlan      = "HAS_EXECUTION_PLAN"
 	RelationshipBelongsTo             = "BELONGS_TO"
 
 	TimeFormat = "2006-01-02T15:04:05Z"
@@ -179,28 +179,61 @@ func (r *GraphConversationRepository) AddMessage(ctx context.Context, conversati
 	return r.graph.AddEdge(ctx, NodeTypeConversation, conversationID, NodeTypeMessage, message.ID, RelationshipContainsMessage, relationshipProps)
 }
 
-// GetConversationMessages retrieves all messages for a conversation
+// GetConversationMessages retrieves all messages for a conversation using graph relationships
 func (r *GraphConversationRepository) GetConversationMessages(ctx context.Context, conversationID string) ([]domain.ConversationMessage, error) {
-	// Query messages by conversation_id
-	filters := map[string]interface{}{
-		"conversation_id": conversationID,
+	// Type assert to get Neo4j driver access for direct Cypher queries
+	neo4jGraph, ok := r.graph.(*graph.Neo4jGraph)
+	if !ok {
+		return nil, fmt.Errorf("GetConversationMessages requires Neo4j graph implementation")
 	}
 
-	messageProps, err := r.graph.QueryNodes(ctx, NodeTypeMessage, filters)
+	driver := neo4jGraph.Driver()
+	session := driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	// Use graph relationship to find messages, ordered by timestamp
+	query := `
+		MATCH (c:Conversation {id: $conversationID})-[:CONTAINS_MESSAGE]->(m:ConversationMessage)
+		RETURN m.id as id, m.role as role, m.content as content, m.timestamp as timestamp, m.metadata as metadata
+		ORDER BY m.timestamp ASC
+	`
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, map[string]interface{}{
+			"conversationID": conversationID,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		var messages []domain.ConversationMessage
+		for result.Next(ctx) {
+			record := result.Record()
+
+			// Extract message properties from the record
+			messageProps := map[string]interface{}{
+				"id":        record.Values[0],
+				"role":      record.Values[1],
+				"content":   record.Values[2],
+				"timestamp": record.Values[3],
+				"metadata":  record.Values[4],
+			}
+
+			message, err := r.mapToMessage(messageProps)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map message properties: %w", err)
+			}
+			messages = append(messages, *message)
+		}
+
+		return messages, nil
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to query conversation messages: %w", err)
 	}
 
-	messages := make([]domain.ConversationMessage, len(messageProps))
-	for i, props := range messageProps {
-		message, err := r.mapToMessage(props)
-		if err != nil {
-			return nil, fmt.Errorf("failed to map message properties: %w", err)
-		}
-		messages[i] = *message
-	}
-
-	return messages, nil
+	return result.([]domain.ConversationMessage), nil
 }
 
 // GetMessagesByRole retrieves messages by role for a conversation
@@ -264,7 +297,7 @@ func (r *GraphConversationRepository) LinkExecutionPlan(ctx context.Context, con
 	}
 
 	// Use the correct node type for execution plan - must match the planning domain
-	return r.graph.AddEdge(ctx, NodeTypeConversation, conversationID, "execution_plan", planID, RelationshipLinkedToPlan, properties)
+	return r.graph.AddEdge(ctx, NodeTypeConversation, conversationID, "execution_plan", planID, RelationshipHasExecutionPlan, properties)
 }
 
 // FindConversationsByUser finds conversations by user ID using graph relationships (graph-native)

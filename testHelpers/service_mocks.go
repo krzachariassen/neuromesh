@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	aiDomain "neuromesh/internal/ai/domain"
 	conversationApp "neuromesh/internal/conversation/application"
 	conversationDomain "neuromesh/internal/conversation/domain"
 	planningDomain "neuromesh/internal/planning/domain"
@@ -99,6 +100,14 @@ func (m *MockConversationService) AddMessage(ctx context.Context, conversationID
 func (m *MockConversationService) LinkExecutionPlan(ctx context.Context, conversationID, executionPlanID string) error {
 	args := m.Called(ctx, conversationID, executionPlanID)
 	return args.Error(0)
+}
+
+func (m *MockConversationService) GetConversationHistory(ctx context.Context, conversationID string) ([]*aiDomain.AIConversationMessage, error) {
+	args := m.Called(ctx, conversationID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*aiDomain.AIConversationMessage), args.Error(1)
 }
 
 func (m *MockConversationService) LinkConversationToProject(ctx context.Context, conversationID, projectID string) error {

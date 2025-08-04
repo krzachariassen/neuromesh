@@ -176,6 +176,11 @@ func (m *TestifyMockGraph) GetEdgesWithTargets(ctx context.Context, nodeType, no
 	return args.Get(0).([]map[string]interface{}), args.Error(1)
 }
 
+func (m *TestifyMockGraph) GetEdgesWithSources(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
+	args := m.Called(ctx, nodeType, nodeID)
+	return args.Get(0).([]map[string]interface{}), args.Error(1)
+}
+
 func (m *TestifyMockGraph) UpdateEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string, properties map[string]interface{}) error {
 	args := m.Called(ctx, sourceType, sourceID, targetType, targetID, edgeType, properties)
 	return args.Error(0)
@@ -460,6 +465,11 @@ func (m *MockGraph) Close(ctx context.Context) error {
 }
 
 func (m *MockGraph) GetEdgesWithTargets(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
+	// Return empty edges for testing - could be enhanced to return test data if needed
+	return []map[string]interface{}{}, nil
+}
+
+func (m *MockGraph) GetEdgesWithSources(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
 	// Return empty edges for testing - could be enhanced to return test data if needed
 	return []map[string]interface{}{}, nil
 }

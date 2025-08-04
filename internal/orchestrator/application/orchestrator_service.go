@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	executionDomain "neuromesh/internal/execution/domain"
+	aiDomain "neuromesh/internal/ai/domain"
 	"neuromesh/internal/logging"
 	planningDomain "neuromesh/internal/planning/domain"
 )
 
 // AIPlanningEngineInterface defines the interface for unified planning approach
 type AIPlanningEngineInterface interface {
-	CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string) (*planningDomain.ExecutionPlan, error)
+	CreateExecutionPlan(ctx context.Context, userInput, userID, agentContext, requestID string, conversationHistory ...[]*aiDomain.AIConversationMessage) (*planningDomain.ExecutionPlan, error)
 	LinkPlanningResultToConversation(ctx context.Context, planningResultID, conversationID string) error
 }
 
@@ -33,6 +33,7 @@ type AIConversationEngineInterface interface {
 // ConversationServiceInterface defines the interface for conversation management
 type ConversationServiceInterface interface {
 	LinkExecutionPlan(ctx context.Context, conversationID, planID string) error
+	GetConversationHistory(ctx context.Context, conversationID string) ([]*aiDomain.AIConversationMessage, error)
 }
 
 // NOTE: LearningServiceInterface removed - following YAGNI principles
@@ -45,7 +46,6 @@ type OrchestratorService struct {
 	graphExplorer       GraphExplorerInterface
 	aiExecutionEngine   AIExecutionEngineInterface
 	conversationService ConversationServiceInterface
-	resultSynthesizer   executionDomain.ResultSynthesizer
 	repository          planningDomain.ExecutionPlanRepository
 	logger              logging.Logger
 }
@@ -56,7 +56,6 @@ func NewOrchestratorService(
 	graphExplorer GraphExplorerInterface,
 	aiExecutionEngine AIExecutionEngineInterface,
 	conversationService ConversationServiceInterface,
-	resultSynthesizer executionDomain.ResultSynthesizer,
 	repository planningDomain.ExecutionPlanRepository,
 	logger logging.Logger,
 ) *OrchestratorService {
@@ -65,7 +64,6 @@ func NewOrchestratorService(
 		graphExplorer:       graphExplorer,
 		aiExecutionEngine:   aiExecutionEngine,
 		conversationService: conversationService,
-		resultSynthesizer:   resultSynthesizer,
 		repository:          repository,
 		logger:              logger,
 	}
@@ -103,8 +101,26 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		}, nil // Return result with error, not Go error
 	}
 
-	// 2. Perform unified AI planning
-	planningResult, err := ors.aiPlanningEngine.CreateExecutionPlan(ctx, request.UserInput, request.UserID, agentContext, request.MessageID)
+	// 2. Get conversation history if available
+	var conversationHistory []*aiDomain.AIConversationMessage
+	if request.ConversationID != "" && ors.conversationService != nil {
+		history, err := ors.conversationService.GetConversationHistory(ctx, request.ConversationID)
+		if err != nil {
+			ors.logger.Warn("Failed to retrieve conversation history, proceeding without context", "error", err, "conversationID", request.ConversationID)
+			// Don't fail the request - proceed without conversation context
+		} else {
+			conversationHistory = history
+			ors.logger.Info("Retrieved conversation history", "conversationID", request.ConversationID, "messages", len(conversationHistory))
+		}
+	}
+
+	// 3. Perform unified AI planning with conversation context
+	var planningResult *planningDomain.ExecutionPlan
+	if conversationHistory != nil && len(conversationHistory) > 0 {
+		planningResult, err = ors.aiPlanningEngine.CreateExecutionPlan(ctx, request.UserInput, request.UserID, agentContext, request.MessageID, conversationHistory)
+	} else {
+		planningResult, err = ors.aiPlanningEngine.CreateExecutionPlan(ctx, request.UserInput, request.UserID, agentContext, request.MessageID)
+	}
 	if err != nil {
 		return &OrchestratorResult{
 			Success: false,
@@ -118,10 +134,10 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		Success:         true,
 	}
 
-	// 3. Handle planning result based on type - PURE ORCHESTRATION
+	// 4. Handle planning result based on type - PURE ORCHESTRATION
 	if planningResult.Type == planningDomain.PlanningTypeClarify {
 		ors.logger.Info("🤔 Planning type: Clarify")
-		result.Message = planningResult.Reasoning // Use reasoning instead of ClarificationQuestion
+		result.Message = planningResult.Description // Use user-friendly clarification question for API response
 	} else if planningResult.Type == planningDomain.PlanningTypeExecute {
 		ors.logger.Info("🚀 Planning type: Execute")
 		result.ExecutionPlanID = planningResult.ID
@@ -132,6 +148,13 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		go func() {
 			backgroundCtx := context.Background()
 			ors.logger.Info("🤖 Starting AI-native execution", "planID", planningResult.ID)
+
+			// Safety check to prevent nil pointer dereference
+			if ors.aiExecutionEngine == nil {
+				ors.logger.Error("❌ AI execution engine not available", nil, "planID", planningResult.ID)
+				return
+			}
+
 			// Convert ExecutionPlan to JSON string for the execution engine
 			executionPlanJSON := ors.convertExecutionPlanToJSON(planningResult)
 			finalResult, err := ors.aiExecutionEngine.ExecuteWithAgents(backgroundCtx, executionPlanJSON, request.UserInput, request.UserID, agentContext, planningResult.ID)
@@ -151,7 +174,7 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 
 	ors.logger.Info("✅ Pure orchestration result", "success", result.Success, "planID", result.ExecutionPlanID, "status", result.Status)
 
-	// 4. Cross-domain coordination: Link execution plans to conversations
+	// 5. Cross-domain coordination: Link execution plans to conversations
 	if planningResult.Type == planningDomain.PlanningTypeExecute && planningResult.ID != "" && request.ConversationID != "" {
 		if err := ors.coordinateCrossDomainRelationships(ctx, request.ConversationID, planningResult.ID); err != nil {
 			ors.logger.Warn("Failed to coordinate cross-domain relationships", "error", err, "conversationID", request.ConversationID, "planID", planningResult.ID)
@@ -161,7 +184,7 @@ func (ors *OrchestratorService) ProcessUserRequest(ctx context.Context, request 
 		}
 	}
 
-	// 5. Link planning result to conversation for graph visualization
+	// 6. Link planning result to conversation for graph visualization
 	// This ensures all planning results appear in the conversation graph, regardless of type
 	if request.ConversationID != "" && ors.aiPlanningEngine != nil {
 		if err := ors.linkPlanningResultToConversation(ctx, planningResult.ID, request.ConversationID); err != nil {
@@ -197,53 +220,6 @@ func (ors *OrchestratorService) linkPlanningResultToConversation(ctx context.Con
 	}
 
 	return ors.aiPlanningEngine.LinkPlanningResultToConversation(ctx, planningResultID, conversationID)
-}
-
-// NOTE: ProcessConversation and AnalyzeConversationPatterns methods removed
-// Following YAGNI principles - we're not implementing these features yet
-
-// handleMetaQuery provides simple responses to orchestrator meta-queries
-// Following YAGNI - keeping it simple for now
-func (ors *OrchestratorService) handleMetaQuery(ctx context.Context, userInput, agentContext string) string {
-	// Simple implementation for now
-	return fmt.Sprintf("This is a meta-query about the orchestrator system. Available agents: %s", agentContext)
-}
-
-// ProcessWithSynthesis processes a request and synthesizes results from an execution plan
-func (ors *OrchestratorService) ProcessWithSynthesis(ctx context.Context, planID, userInput, userID string) (string, error) {
-	if ors.resultSynthesizer == nil {
-		return "", fmt.Errorf("result synthesizer not configured")
-	}
-
-	// Use the result synthesizer to synthesize agent results
-	synthesizedResult, err := ors.resultSynthesizer.SynthesizeResults(ctx, planID)
-	if err != nil {
-		return "", fmt.Errorf("failed to synthesize results for plan %s: %w", planID, err)
-	}
-
-	return synthesizedResult, nil
-}
-
-// IsExecutionComplete checks if all steps in an execution plan are complete
-func (ors *OrchestratorService) IsExecutionComplete(ctx context.Context, planID string) (bool, error) {
-	if ors.repository == nil {
-		return false, fmt.Errorf("repository not configured")
-	}
-
-	// Get the execution plan
-	plan, err := ors.repository.GetByID(ctx, planID)
-	if err != nil {
-		return false, fmt.Errorf("failed to get execution plan %s: %w", planID, err)
-	}
-
-	// Check if all steps are completed
-	for _, step := range plan.Steps {
-		if step.Status != planningDomain.ExecutionStepStatusCompleted {
-			return false, nil
-		}
-	}
-
-	return true, nil
 }
 
 // convertExecutionPlanToJSON converts an execution plan to JSON string for the execution engine
@@ -309,27 +285,4 @@ func (ors *OrchestratorService) formatSteps(steps []*planningDomain.ExecutionSte
 	}
 	formatted += "]"
 	return formatted
-}
-
-// convertPlanningResultToExecutionPlan converts a planning result to execution plan format (legacy support)
-func (ors *OrchestratorService) convertPlanningResultToExecutionPlan(planningResult *planningDomain.ExecutionPlan) string {
-	if planningResult == nil {
-		return ""
-	}
-
-	// This method is now simplified since we work directly with ExecutionPlan
-	executionPlan := fmt.Sprintf(`Execution Plan ID: %s
-Intent: %s
-Category: %s
-Required Agents: %v
-Agent Gap: %v
-Reasoning: %s`,
-		planningResult.ID,
-		planningResult.Intent,
-		planningResult.Category,
-		planningResult.RequiredAgents,
-		planningResult.AgentGap,
-		planningResult.Reasoning)
-
-	return executionPlan
 }

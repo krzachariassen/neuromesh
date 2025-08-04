@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	aiDomain "neuromesh/internal/ai/domain"
 	"neuromesh/internal/conversation/domain"
 )
 
@@ -32,6 +33,7 @@ type ConversationService interface {
 	AddMessage(ctx context.Context, conversationID, messageID string, role domain.MessageRole, content string, metadata map[string]interface{}) error
 	GetConversationMessages(ctx context.Context, conversationID string) ([]domain.ConversationMessage, error)
 	GetMessagesByRole(ctx context.Context, conversationID string, role domain.MessageRole) ([]domain.ConversationMessage, error)
+	GetConversationHistory(ctx context.Context, conversationID string) ([]*aiDomain.AIConversationMessage, error)
 
 	// Execution plan linking
 	LinkExecutionPlan(ctx context.Context, conversationID, planID string) error
@@ -189,6 +191,26 @@ func (s *ConversationServiceImpl) GetMessagesByRole(ctx context.Context, convers
 		return nil, fmt.Errorf("failed to get messages by role: %w", err)
 	}
 	return messages, nil
+}
+
+// GetConversationHistory retrieves conversation messages formatted for AI conversation context
+func (s *ConversationServiceImpl) GetConversationHistory(ctx context.Context, conversationID string) ([]*aiDomain.AIConversationMessage, error) {
+	// Get conversation messages
+	messages, err := s.repo.GetConversationMessages(ctx, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get conversation messages: %w", err)
+	}
+
+	// Convert domain messages to AI conversation format
+	var aiMessages []*aiDomain.AIConversationMessage
+	for _, msg := range messages {
+		role := string(msg.Role)
+		if role == "user" || role == "assistant" || role == "system" {
+			aiMessages = append(aiMessages, aiDomain.NewAIConversationMessage(role, msg.Content))
+		}
+	}
+
+	return aiMessages, nil
 }
 
 // LinkExecutionPlan links an execution plan to a conversation

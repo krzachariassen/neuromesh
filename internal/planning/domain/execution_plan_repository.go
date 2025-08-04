@@ -19,8 +19,9 @@ type ExecutionPlanRepository interface {
 
 	// Relationship operations (consolidated)
 	LinkToAnalysis(ctx context.Context, analysisID, planID string) error
-	LinkToRequest(ctx context.Context, planID, requestID string) error           // From PlanningResultRepository
-	LinkToConversation(ctx context.Context, planID, conversationID string) error // From PlanningResultRepository
+	LinkToRequest(ctx context.Context, planID, requestID string) error            // From PlanningResultRepository
+	LinkToConversation(ctx context.Context, planID, conversationID string) error  // DEPRECATED: Use Conversation domain's LinkExecutionPlan instead
+	GetConversationIDByPlanID(ctx context.Context, planID string) (string, error) // Get conversation linked to plan
 
 	// Step operations
 	GetStepsByPlanID(ctx context.Context, planID string) ([]*ExecutionStep, error)
@@ -37,7 +38,7 @@ type ExecutionPlanRepository interface {
 	// Correlation mapping operations - agent result linking
 	GetPlanIDByCorrelationID(ctx context.Context, correlationID string) (string, error)
 
-	// Synthesis Result operations - synthesis result storage
-	StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error
-	GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error)
+	// Conversation Summary operations - conversation summary storage
+	StoreConversationSummary(ctx context.Context, summary *executionDomain.ConversationSummary) error
+	GetConversationSummaryByPlanID(ctx context.Context, planID string) (*executionDomain.ConversationSummary, error)
 }

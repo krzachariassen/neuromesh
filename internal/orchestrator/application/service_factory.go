@@ -30,7 +30,7 @@ type ServiceFactory struct {
 	aiProvider            aiDomain.AIProvider
 	correlationTracker    *infrastructure.CorrelationTracker
 	globalMessageConsumer *infrastructure.GlobalMessageConsumer
-	synthesisEventHandler *executionApp.SynthesisEventHandler
+	summaryEventHandler   *executionApp.SummaryEventHandler
 	// Conversation services
 	conversationService conversationApp.ConversationService
 	userService         userApp.UserService
@@ -56,16 +56,24 @@ func NewServiceFactory(
 	// Create AIMessageBus from the base MessageBus (only if dependencies are available)
 	var aiMessageBus messaging.AIMessageBus
 	var globalMessageConsumer *infrastructure.GlobalMessageConsumer
-	var synthesisEventHandler *executionApp.SynthesisEventHandler
+	var summaryEventHandler *executionApp.SummaryEventHandler
 
 	if messageBus != nil && graph != nil {
 		aiMessageBus = messaging.NewAIMessageBus(messageBus, graph, logger)
 		globalMessageConsumer = infrastructure.NewGlobalMessageConsumer(aiMessageBus, correlationTracker)
 
-		// Create synthesis event handler using clean MessageBus domain events
+		// Create services for conversation summarization
 		executionPlanRepo := planningInfra.NewGraphExecutionPlanRepository(graph)
-		resultSynthesizer := executionApp.NewAIResultSynthesizer(aiProvider, executionPlanRepo)
-		synthesisEventHandler = executionApp.NewSynthesisEventHandler(messageBus, executionPlanRepo, resultSynthesizer)
+
+		// Create conversation service
+		conversationRepo := conversationInfra.NewGraphConversationRepository(graph)
+		conversationService := conversationApp.NewConversationService(conversationRepo)
+
+		// Create conversation summarization with conversation context
+		conversationSummarizer := executionApp.NewConversationSummarizer(aiProvider, executionPlanRepo, conversationService)
+
+		// Create new SummaryEventHandler to handle agent completion coordination
+		summaryEventHandler = executionApp.NewSummaryEventHandler(messageBus, executionPlanRepo, conversationSummarizer)
 	}
 
 	// Create conversation and user services
@@ -93,7 +101,7 @@ func NewServiceFactory(
 		aiProvider:            aiProvider,
 		correlationTracker:    correlationTracker,
 		globalMessageConsumer: globalMessageConsumer,
-		synthesisEventHandler: synthesisEventHandler,
+		summaryEventHandler:   summaryEventHandler,
 		conversationService:   conversationService,
 		userService:           userService,
 		projectService:        projectService,
@@ -115,8 +123,8 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 	graphExplorer := NewGraphExplorer(agentService)
 	aiExecutionEngine := executionApp.NewAIExecutionEngine(sf.aiProvider, sf.aiMessageBus, sf.correlationTracker, executionPlanRepo, sf.messageBus)
 
-	// Create result synthesizer for intelligent result combination
-	resultSynthesizer := executionApp.NewAIResultSynthesizer(sf.aiProvider, executionPlanRepo)
+	// Create conversation summarizer for intelligent conversation summary (future use)
+	_ = executionApp.NewConversationSummarizer(sf.aiProvider, executionPlanRepo, sf.conversationService)
 
 	// Wire everything together using AI-native execution approach
 	return NewOrchestratorService(
@@ -124,7 +132,6 @@ func (sf *ServiceFactory) CreateOrchestratorService() *OrchestratorService {
 		graphExplorer,
 		aiExecutionEngine,
 		sf.conversationService,
-		resultSynthesizer,
 		executionPlanRepo,
 		sf.logger,
 	)
@@ -155,13 +162,13 @@ func (sf *ServiceFactory) StartServices(ctx context.Context) error {
 		return fmt.Errorf("failed to start global message consumer: %w", err)
 	}
 
-	// Start synthesis event handler for agent completion coordination
-	if sf.synthesisEventHandler != nil {
-		err = sf.synthesisEventHandler.StartEventListener(sf.shutdownContext)
+	// Start summary event handler for agent completion coordination
+	if sf.summaryEventHandler != nil {
+		err = sf.summaryEventHandler.StartEventListener(sf.shutdownContext)
 		if err != nil {
-			return fmt.Errorf("failed to start synthesis event handler: %w", err)
+			return fmt.Errorf("failed to start summary event handler: %w", err)
 		}
-		sf.logger.Info("✅ Synthesis event handler started for agent completion coordination")
+		sf.logger.Info("✅ Summary event handler started for agent completion coordination")
 	}
 
 	// Mark as started

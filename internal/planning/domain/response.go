@@ -159,3 +159,13 @@ func (r *ResponseParser) ExtractPlanningType(analysis string) string {
 		return planningType
 	}
 }
+
+// Helper function to check if slice contains string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}

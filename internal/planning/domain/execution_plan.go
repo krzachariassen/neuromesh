@@ -82,7 +82,7 @@ func NewUnifiedExecutionPlan(
 	requestID, intent, category string,
 	confidence int,
 	reasoning string,
-	availableAgents, requiredAgents, agentGap []string,
+	availableAgents, requiredAgents []string,
 	planningType PlanningType,
 ) *ExecutionPlan {
 	return &ExecutionPlan{
@@ -105,7 +105,7 @@ func NewUnifiedExecutionPlan(
 		Reasoning:       reasoning,
 		AvailableAgents: availableAgents,
 		RequiredAgents:  requiredAgents,
-		AgentGap:        agentGap,
+		AgentGap:        []string{}, // AI handles gap analysis in reasoning
 	}
 }
 

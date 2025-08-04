@@ -652,43 +652,70 @@ func (r *GraphExecutionPlanRepository) GetPlanIDByCorrelationID(ctx context.Cont
 	return planIDStr, nil
 }
 
-// StoreSynthesisResult stores a synthesis result in the graph
-func (r *GraphExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error {
-	if result == nil {
-		return fmt.Errorf("synthesis result cannot be nil")
+// StoreConversationSummary stores a conversation summary in the graph with conversation-aware relationships
+func (r *GraphExecutionPlanRepository) StoreConversationSummary(ctx context.Context, summary *executionDomain.ConversationSummary) error {
+	if summary == nil {
+		return fmt.Errorf("conversation summary cannot be nil")
 	}
 
-	if result.ID == "" {
-		return fmt.Errorf("synthesis result ID cannot be empty")
+	if summary.ID == "" {
+		return fmt.Errorf("conversation summary ID cannot be empty")
 	}
 
-	if result.PlanID == "" {
-		return fmt.Errorf("synthesis result plan ID cannot be empty")
+	if summary.PlanID == "" {
+		return fmt.Errorf("conversation summary plan ID cannot be empty")
 	}
 
-	// Create synthesis result node properties
+	// Create conversation summary node properties
 	properties := map[string]interface{}{
-		"plan_id":    result.PlanID,
-		"content":    result.Content,
-		"status":     string(result.Status),
-		"created_at": result.CreatedAt.Format(time.RFC3339Nano),
+		"plan_id":         summary.PlanID,
+		"conversation_id": summary.ConversationID,
+		"summary":         summary.Summary,    // Full technical summary (was Content)
+		"user_result":     summary.UserResult, // User-friendly answer (was UserAnswer)
+		"status":          string(summary.Status),
+		"created_at":      summary.CreatedAt.Format(time.RFC3339Nano),
 	}
 
-	// Create the synthesis result node
-	if err := r.graph.AddNode(ctx, "synthesis_result", result.ID, properties); err != nil {
-		return fmt.Errorf("failed to create synthesis result node: %w", err)
+	// Add completion timestamp if available
+	if summary.CompletedAt != nil {
+		properties["completed_at"] = summary.CompletedAt.Format(time.RFC3339Nano)
 	}
 
-	// Create relationship from execution plan to synthesis result
-	if err := r.graph.AddEdge(ctx, "execution_plan", result.PlanID, "synthesis_result", result.ID, "HAS_SYNTHESIS_RESULT", nil); err != nil {
-		return fmt.Errorf("failed to create HAS_SYNTHESIS_RESULT relationship: %w", err)
+	// Add error message if present
+	if summary.ErrorMessage != "" {
+		properties["error_message"] = summary.ErrorMessage
+	}
+
+	// Add metadata if present (serialize to JSON for Neo4j compatibility)
+	if len(summary.Metadata) > 0 {
+		if metadataJSON, err := json.Marshal(summary.Metadata); err == nil {
+			properties["metadata"] = string(metadataJSON)
+		}
+		// If marshaling fails, skip metadata - it's supplementary information
+	}
+
+	// Create the conversation summary node
+	if err := r.graph.AddNode(ctx, "conversation_summary", summary.ID, properties); err != nil {
+		return fmt.Errorf("failed to create conversation summary node: %w", err)
+	}
+
+	// Create relationship from conversation to conversation summary (primary relationship)
+	if summary.ConversationID != "" {
+		if err := r.graph.AddEdge(ctx, "conversation", summary.ConversationID, "conversation_summary", summary.ID, "HAS_CONVERSATION_SUMMARY", nil); err != nil {
+			return fmt.Errorf("failed to create conversation HAS_CONVERSATION_SUMMARY relationship: %w", err)
+		}
+	}
+
+	// Create relationship from conversation summary to execution plan (traceability)
+	if err := r.graph.AddEdge(ctx, "conversation_summary", summary.ID, "execution_plan", summary.PlanID, "GENERATED_FROM", nil); err != nil {
+		return fmt.Errorf("failed to create GENERATED_FROM relationship: %w", err)
 	}
 
 	return nil
 }
 
-// GetSynthesisResultByPlanID retrieves a synthesis result by plan ID
-func (r *GraphExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error) {
+// GetConversationSummaryByPlanID retrieves a conversation summary by plan ID
+func (r *GraphExecutionPlanRepository) GetConversationSummaryByPlanID(ctx context.Context, planID string) (*executionDomain.ConversationSummary, error) {
 	if planID == "" {
 		return nil, fmt.Errorf("plan ID cannot be empty")
 	}
@@ -699,52 +726,62 @@ func (r *GraphExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Co
 		return nil, fmt.Errorf("failed to get edges for execution plan %s: %w", planID, err)
 	}
 
-	// Look for synthesis result edge
+	// Look for conversation summary edge
 	for _, planEdge := range planEdges {
-		if edgeType, ok := planEdge["type"].(string); ok && edgeType == "HAS_SYNTHESIS_RESULT" {
-			if targetType, ok := planEdge["target_type"].(string); ok && targetType == "synthesis_result" {
-				if resultID, ok := planEdge["target_id"].(string); ok {
-					// Get the synthesis result node
-					resultData, err := r.graph.GetNode(ctx, "synthesis_result", resultID)
+		if edgeType, ok := planEdge["type"].(string); ok && edgeType == "HAS_CONVERSATION_SUMMARY" {
+			if targetType, ok := planEdge["target_type"].(string); ok && targetType == "conversation_summary" {
+				if summaryID, ok := planEdge["target_id"].(string); ok {
+					// Get the conversation summary node
+					summaryData, err := r.graph.GetNode(ctx, "conversation_summary", summaryID)
 					if err != nil {
 						if strings.Contains(err.Error(), "node not found") {
-							return nil, nil // No synthesis result found
+							return nil, nil // No conversation summary found
 						}
-						return nil, fmt.Errorf("failed to get synthesis result node %s: %w", resultID, err)
+						return nil, fmt.Errorf("failed to get conversation summary node %s: %w", summaryID, err)
 					}
 
-					return r.mapNodeDataToSynthesisResult(resultData)
+					return r.mapNodeDataToConversationSummary(summaryData)
 				}
 			}
 		}
 	}
 
-	return nil, nil // No synthesis result found
+	return nil, nil // No conversation summary found
 }
 
-// mapNodeDataToSynthesisResult converts Neo4j node data to SynthesisResult domain entity
-func (r *GraphExecutionPlanRepository) mapNodeDataToSynthesisResult(nodeData map[string]interface{}) (*executionDomain.SynthesisResult, error) {
+// mapNodeDataToConversationSummary converts Neo4j node data to ConversationSummary domain entity
+func (r *GraphExecutionPlanRepository) mapNodeDataToConversationSummary(nodeData map[string]interface{}) (*executionDomain.ConversationSummary, error) {
 	id, ok := nodeData["id"].(string)
 	if !ok {
-		return nil, fmt.Errorf("synthesis result id is not a string")
+		return nil, fmt.Errorf("conversation summary id is not a string")
 	}
 
 	planID, ok := nodeData["plan_id"].(string)
 	if !ok {
-		return nil, fmt.Errorf("synthesis result plan_id is not a string")
+		return nil, fmt.Errorf("conversation summary plan_id is not a string")
 	}
 
-	content, ok := nodeData["content"].(string)
+	conversationID, ok := nodeData["conversation_id"].(string)
 	if !ok {
-		return nil, fmt.Errorf("synthesis result content is not a string")
+		return nil, fmt.Errorf("conversation summary conversation_id is not a string")
+	}
+
+	summary, ok := nodeData["summary"].(string)
+	if !ok {
+		return nil, fmt.Errorf("conversation summary summary is not a string")
+	}
+
+	userResult, ok := nodeData["user_result"].(string)
+	if !ok {
+		return nil, fmt.Errorf("conversation summary user_result is not a string")
 	}
 
 	statusStr, ok := nodeData["status"].(string)
 	if !ok {
-		return nil, fmt.Errorf("synthesis result status is not a string")
+		return nil, fmt.Errorf("conversation summary status is not a string")
 	}
 
-	status := executionDomain.SynthesisResultStatus(statusStr)
+	status := executionDomain.ConversationSummaryStatus(statusStr)
 
 	createdAtData, ok := nodeData["created_at"]
 	var createdAt time.Time
@@ -761,12 +798,44 @@ func (r *GraphExecutionPlanRepository) mapNodeDataToSynthesisResult(nodeData map
 		}
 	}
 
-	return &executionDomain.SynthesisResult{
-		ID:        id,
-		PlanID:    planID,
-		Content:   content,
-		Status:    status,
-		CreatedAt: createdAt,
+	// Handle optional fields
+	var completedAt *time.Time
+	if completedAtData, exists := nodeData["completed_at"]; exists && completedAtData != nil {
+		switch v := completedAtData.(type) {
+		case time.Time:
+			completedAt = &v
+		case string:
+			if parsed, err := time.Parse(time.RFC3339, v); err == nil {
+				completedAt = &parsed
+			}
+		}
+	}
+
+	errorMessage := ""
+	if errMsg, exists := nodeData["error_message"]; exists && errMsg != nil {
+		if errStr, ok := errMsg.(string); ok {
+			errorMessage = errStr
+		}
+	}
+
+	metadata := make(map[string]interface{})
+	if metaData, exists := nodeData["metadata"]; exists && metaData != nil {
+		if metaMap, ok := metaData.(map[string]interface{}); ok {
+			metadata = metaMap
+		}
+	}
+
+	return &executionDomain.ConversationSummary{
+		ID:             id,
+		ConversationID: conversationID,
+		PlanID:         planID,
+		Summary:        summary,
+		UserResult:     userResult,
+		Status:         status,
+		CreatedAt:      createdAt,
+		CompletedAt:    completedAt,
+		ErrorMessage:   errorMessage,
+		Metadata:       metadata,
 	}, nil
 }
 
@@ -836,7 +905,37 @@ func (r *GraphExecutionPlanRepository) LinkToRequest(ctx context.Context, planID
 	return r.graph.AddEdge(ctx, "execution_plan", planID, "request", requestID, "LINKED_TO_REQUEST", nil)
 }
 
-// LinkToConversation links execution plan to a conversation (from former PlanningResultRepository)
+// LinkToConversation is deprecated - use Conversation domain's LinkExecutionPlan instead
+// This method now does nothing to avoid duplicate relationship creation
+// Following DDD: Conversation domain owns the conversation->execution_plan relationship
 func (r *GraphExecutionPlanRepository) LinkToConversation(ctx context.Context, planID, conversationID string) error {
-	return r.graph.AddEdge(ctx, "execution_plan", planID, "conversation", conversationID, "LINKED_TO_CONVERSATION", nil)
+	// No-op: Conversation domain handles this relationship via LinkExecutionPlan
+	// This maintains interface compatibility while avoiding duplicate relationships
+	return nil
+}
+
+// GetConversationIDByPlanID retrieves the conversation ID linked to an execution plan
+func (r *GraphExecutionPlanRepository) GetConversationIDByPlanID(ctx context.Context, planID string) (string, error) {
+	if planID == "" {
+		return "", fmt.Errorf("plan ID cannot be empty")
+	}
+
+	// Get edges that point TO the execution plan (incoming edges: conversation -> execution_plan)
+	planEdges, err := r.graph.GetEdgesWithSources(ctx, "execution_plan", planID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get edges for execution plan %s: %w", planID, err)
+	}
+
+	// Look for HAS_EXECUTION_PLAN edge from conversation
+	for _, planEdge := range planEdges {
+		if edgeType, ok := planEdge["type"].(string); ok && edgeType == "HAS_EXECUTION_PLAN" {
+			if sourceType, ok := planEdge["source_type"].(string); ok && sourceType == "Conversation" {
+				if conversationID, ok := planEdge["source_id"].(string); ok {
+					return conversationID, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no conversation linked to execution plan %s", planID)
 }

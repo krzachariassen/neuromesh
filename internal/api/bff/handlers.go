@@ -26,8 +26,8 @@ func (s *Service) ChatHandler() http.Handler {
 			return
 		}
 
-		// Process the message
-		response, err := s.ProcessMessage(r.Context(), req.SessionID, req.Message, req.ProjectID)
+		// Process the message using the full request (includes conversation_id)
+		response, err := s.ProcessChatRequest(r.Context(), &req)
 		if err != nil {
 			s.logger.Error("Failed to process web message", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)

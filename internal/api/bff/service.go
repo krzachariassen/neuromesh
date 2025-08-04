@@ -100,6 +100,119 @@ func NewService(
 	}
 }
 
+// ProcessChatRequest processes a full chat request, including optional conversation_id
+func (s *Service) ProcessChatRequest(ctx context.Context, request *ChatRequest) (*WebResponse, error) {
+	// Validate inputs
+	if request.Message == "" {
+		return nil, errors.New("message cannot be empty")
+	}
+
+	// Check context cancellation
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	s.logger.Debug("Processing chat request with conversation persistence",
+		"providedSessionID", request.SessionID,
+		"providedConversationID", request.ConversationID,
+		"message", request.Message,
+		"projectID", request.ProjectID)
+
+	// 1. Ensure sessionID is set (auto-generate if not provided)
+	actualSessionID := s.ensureSessionID(request.SessionID)
+
+	// 2. Ensure user and session exist FIRST (create User/Session nodes before conversation)
+	user, _, err := s.ensureUserAndSession(ctx, actualSessionID)
+	if err != nil {
+		s.logger.Error("Failed to ensure user and session", err, "sessionID", actualSessionID)
+		return s.handleError("Failed to initialize session", actualSessionID), nil
+	}
+
+	// 3. Update request with actual User/Session IDs for conversation handling
+	request.SessionID = actualSessionID
+	request.UserID = user.ID
+
+	// 4. Handle conversation - use provided ID if available, otherwise create new
+	var conversation *conversationDomain.Conversation
+	if request.ConversationID != "" {
+		// Try to retrieve existing conversation
+		conversation, err = s.conversationService.GetConversation(ctx, request.ConversationID)
+		if err != nil {
+			s.logger.Error("Failed to retrieve existing conversation", err,
+				"conversationID", request.ConversationID, "sessionID", actualSessionID)
+			// Fall back to creating new conversation if existing one cannot be retrieved
+			conversation, err = s.ensureConversation(ctx, request)
+			if err != nil {
+				s.logger.Error("Failed to create fallback conversation", err, "sessionID", actualSessionID)
+				return s.handleError("Failed to initialize conversation", actualSessionID), nil
+			}
+		}
+	} else {
+		// Create new conversation
+		conversation, err = s.ensureConversation(ctx, request)
+		if err != nil {
+			s.logger.Error("Failed to ensure conversation", err, "sessionID", actualSessionID)
+			return s.handleError("Failed to initialize conversation", actualSessionID), nil
+		}
+	}
+
+	// 5. Add user message to conversation
+	userMessageID := generateMessageID()
+	err = s.conversationService.AddMessage(ctx, conversation.ID, userMessageID,
+		conversationDomain.MessageRoleUser, request.Message, nil)
+	if err != nil {
+		s.logger.Error("Failed to add user message to conversation", err,
+			"conversationID", conversation.ID, "messageID", userMessageID)
+		// Continue processing even if message storage fails
+	}
+
+	// 6. Process through orchestrator using the new hierarchical interface
+	orchestratorRequest := &orchestratorApp.OrchestratorRequest{
+		UserInput:      request.Message,
+		UserID:         user.ID,
+		SessionID:      actualSessionID,
+		ConversationID: conversation.ID,
+	}
+
+	s.logger.Debug("Sending request to orchestrator", "userInput", request.Message,
+		"userID", user.ID, "sessionID", actualSessionID, "conversationID", conversation.ID)
+
+	// Process through orchestrator
+	result, err := s.orchestrator.ProcessUserRequest(ctx, orchestratorRequest)
+	if err != nil {
+		s.logger.Error("Failed to process orchestrator request", err,
+			"userID", user.ID, "sessionID", actualSessionID, "conversationID", conversation.ID)
+		return s.handleError("Failed to process request", actualSessionID), nil
+	}
+
+	// 7. Store AI response in conversation
+	aiMessageID := generateMessageID()
+	err = s.conversationService.AddMessage(ctx, conversation.ID, aiMessageID,
+		conversationDomain.MessageRoleAssistant, result.Message, map[string]interface{}{
+			"execution_plan_id": result.ExecutionPlanID,
+			"success":           result.Success,
+		})
+	if err != nil {
+		s.logger.Error("Failed to add AI message to conversation", err,
+			"conversationID", conversation.ID, "messageID", aiMessageID)
+		// Continue - don't fail the request if message storage fails
+	}
+
+	// 8. Return successful response
+	response := &WebResponse{
+		Content:        result.Message,
+		SessionID:      actualSessionID,
+		ConversationID: conversation.ID,
+		ProjectID:      request.ProjectID,
+	}
+
+	s.logger.Debug("BFF processed message successfully",
+		"sessionID", actualSessionID, "conversationID", conversation.ID,
+		"responseLength", len(result.Message))
+
+	return response, nil
+}
+
 // ProcessMessage processes a message through the BFF with hierarchical ID management
 func (s *Service) ProcessMessage(ctx context.Context, sessionID, message, projectID string) (*WebResponse, error) {
 	// Validate inputs (allowing sessionID to be empty for auto-generation)

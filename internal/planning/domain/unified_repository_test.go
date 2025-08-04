@@ -30,7 +30,6 @@ func TestUnifiedExecutionPlanRepository_TDD(t *testing.T) {
 			"Testing unified repository operations",
 			[]string{"agent1", "agent2"},
 			[]string{"agent1"},
-			[]string{},
 			PlanningTypeExecute,
 		)
 
@@ -81,7 +80,6 @@ func TestUnifiedExecutionPlanRepository_TDD(t *testing.T) {
 			"PlanningResult entity is no longer needed",
 			[]string{"agent1"},
 			[]string{"agent1"},
-			[]string{},
 			PlanningTypeExecute,
 		)
 
@@ -165,6 +163,11 @@ func (m *MockUnifiedExecutionPlanRepository) LinkToConversation(ctx context.Cont
 	return nil
 }
 
+func (m *MockUnifiedExecutionPlanRepository) GetConversationIDByPlanID(ctx context.Context, planID string) (string, error) {
+	// Mock implementation - return mock conversation ID for testing
+	return "mock-conversation-id", nil
+}
+
 func (m *MockUnifiedExecutionPlanRepository) LinkToRequest(ctx context.Context, planID, requestID string) error {
 	// Mock implementation - in real implementation this would create graph relationship
 	return nil
@@ -207,9 +210,9 @@ func (m *MockUnifiedExecutionPlanRepository) GetAgentResultByID(ctx context.Cont
 func (m *MockUnifiedExecutionPlanRepository) GetPlanIDByCorrelationID(ctx context.Context, correlationID string) (string, error) {
 	return "", nil
 }
-func (m *MockUnifiedExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error {
+func (m *MockUnifiedExecutionPlanRepository) StoreConversationSummary(ctx context.Context, summary *executionDomain.ConversationSummary) error {
 	return nil
 }
-func (m *MockUnifiedExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error) {
+func (m *MockUnifiedExecutionPlanRepository) GetConversationSummaryByPlanID(ctx context.Context, planID string) (*executionDomain.ConversationSummary, error) {
 	return nil, nil
 }

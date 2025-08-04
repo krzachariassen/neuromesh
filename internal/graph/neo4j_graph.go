@@ -320,6 +320,51 @@ func (g *Neo4jGraph) GetEdgesWithTargets(ctx context.Context, nodeType, nodeID s
 	return result.([]map[string]interface{}), nil
 }
 
+// GetEdgesWithSources retrieves edges with source node information (incoming edges)
+func (g *Neo4jGraph) GetEdgesWithSources(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error) {
+	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	query := fmt.Sprintf("MATCH (m)-[r]->(n:%s {id: $id}) RETURN r, m.id as source_id, labels(m)[0] as source_type", nodeType)
+	params := map[string]interface{}{"id": nodeID}
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return nil, err
+		}
+
+		var edges []map[string]interface{}
+		for result.Next(ctx) {
+			record := result.Record()
+			rel := record.Values[0].(neo4j.Relationship)
+			sourceID := record.Values[1]
+			sourceType := record.Values[2]
+
+			edgeMap := map[string]interface{}{
+				"type":        rel.Type,
+				"source_id":   convertValue(sourceID),
+				"source_type": convertValue(sourceType),
+			}
+
+			// Add all properties with type conversion
+			for k, v := range rel.Props {
+				edgeMap[k] = convertValue(v)
+			}
+
+			edges = append(edges, edgeMap)
+		}
+
+		return edges, result.Err()
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return result.([]map[string]interface{}), nil
+}
+
 // UpdateEdge updates an edge
 func (g *Neo4jGraph) UpdateEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string, properties map[string]interface{}) error {
 	session := g.driver.NewSession(ctx, neo4j.SessionConfig{})
@@ -529,13 +574,4 @@ func convertValue(value interface{}) interface{} {
 	default:
 		return v
 	}
-}
-
-// convertProperties converts a map of Neo4j properties to normalized Go types
-func convertProperties(props map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
-	for k, v := range props {
-		result[k] = convertValue(v)
-	}
-	return result
 }

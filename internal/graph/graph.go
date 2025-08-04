@@ -19,6 +19,7 @@ type Graph interface {
 	AddEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string, properties map[string]interface{}) error
 	GetEdges(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error)
 	GetEdgesWithTargets(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error)
+	GetEdgesWithSources(ctx context.Context, nodeType, nodeID string) ([]map[string]interface{}, error)
 	UpdateEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string, properties map[string]interface{}) error
 	DeleteEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, edgeType string) error
 

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -105,6 +106,72 @@ func TestAIPlanningEngine_CreateExecutionPlan(t *testing.T) {
 			assert.NotEmpty(t, result.Reasoning)
 			t.Logf("Clarification Reasoning: %s", result.Reasoning)
 		}
+	})
+
+	t.Run("should return CLARIFY when translation capability is missing", func(t *testing.T) {
+		// RED PHASE: Write failing test for capability gap detection
+		// This test follows TDD protocol - we expect it to fail initially
+
+		// Arrange: Setup scenario where user wants translation but no translation agent available
+		ctx := context.Background()
+		aiProvider := testHelpers.SetupRealAIProvider(t)
+		engine := NewAIPlanningEngine(aiProvider)
+
+		userID := "test-user-123"
+		requestID := "test-request-capability-gap"
+		userInput := "Count words and translate to Spanish: 'the quick brown fox'"
+
+		// Only text-processor available, no translation agent
+		agentContext := `{
+			"available_agents": [
+				{
+					"id": "text-processor-01",
+					"name": "text-processor",
+					"status": "available",
+					"capabilities": [
+						{
+							"name": "word_count",
+							"description": "Count words in text"
+						},
+						{
+							"name": "text_analysis",
+							"description": "Analyze text structure and properties"
+						}
+					]
+				}
+			]
+		}`
+
+		// Act: Create execution plan
+		result, err := engine.CreateExecutionPlan(ctx, userInput, userID, agentContext, requestID)
+
+		// Assert: Should detect capability gap and return CLARIFY
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, requestID, result.RequestID)
+
+		// Key assertion: AI should detect missing translation capability and ask for clarification
+		assert.Equal(t, domain.PlanningTypeClarify, result.Type,
+			"AI should return CLARIFY when translation capability is missing but required")
+
+		// Verify reasoning contains capability gap analysis
+		assert.NotEmpty(t, result.Reasoning)
+		assert.Contains(t, strings.ToLower(result.Reasoning), "translation",
+			"Reasoning should mention translation capability gap")
+
+		// Verify available agents correctly identified
+		assert.Contains(t, result.AvailableAgents, "text-processor")
+
+		// The clarification question should be helpful to the user
+		assert.NotEmpty(t, result.Description, "Should have clarification question for user")
+
+		// Log for debugging
+		t.Logf("Planning Type: %s", result.Type)
+		t.Logf("Agent Gap: %v", result.AgentGap)
+		t.Logf("Available Agents: %v", result.AvailableAgents)
+		t.Logf("Required Agents: %v", result.RequiredAgents)
+		t.Logf("Reasoning: %s", result.Reasoning)
+		t.Logf("Clarification: %s", result.Description)
 	})
 }
 

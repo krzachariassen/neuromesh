@@ -158,6 +158,9 @@ func (m *TestExecutionPlanRepository) LinkToAnalysis(ctx context.Context, analys
 func (m *TestExecutionPlanRepository) LinkToConversation(ctx context.Context, conversationID, planID string) error {
 	return nil
 }
+func (m *TestExecutionPlanRepository) GetConversationIDByPlanID(ctx context.Context, planID string) (string, error) {
+	return "mock-conversation-id", nil
+}
 func (m *TestExecutionPlanRepository) LinkToRequest(ctx context.Context, requestID, planID string) error {
 	return nil
 }
@@ -176,9 +179,9 @@ func (m *TestExecutionPlanRepository) GetAgentResultsByExecutionStep(ctx context
 func (m *TestExecutionPlanRepository) GetAgentResultByID(ctx context.Context, resultID string) (*executionDomain.AgentResult, error) {
 	return nil, nil
 }
-func (m *TestExecutionPlanRepository) StoreSynthesisResult(ctx context.Context, result *executionDomain.SynthesisResult) error {
+func (m *TestExecutionPlanRepository) StoreConversationSummary(ctx context.Context, summary *executionDomain.ConversationSummary) error {
 	return nil
 }
-func (m *TestExecutionPlanRepository) GetSynthesisResultByPlanID(ctx context.Context, planID string) (*executionDomain.SynthesisResult, error) {
+func (m *TestExecutionPlanRepository) GetConversationSummaryByPlanID(ctx context.Context, planID string) (*executionDomain.ConversationSummary, error) {
 	return nil, nil
 }
