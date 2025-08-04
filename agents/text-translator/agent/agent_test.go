@@ -20,26 +20,26 @@ func TestAINativeAgent_ProcessInstruction(t *testing.T) {
 	}
 	agent := NewAINativeAgent(config)
 
-	t.Run("should count words correctly", func(t *testing.T) {
+	t.Run("should translate text correctly", func(t *testing.T) {
 		testCases := []struct {
 			name        string
 			instruction string
 			expected    string
 		}{
 			{
-				name:        "simple word count with quotes",
-				instruction: `Count the number of words in "Hello world"`,
-				expected:    `The text "Hello world" contains 2 words.`,
+				name:        "translate to spanish with quotes",
+				instruction: `Translate "hello world" to Spanish`,
+				expected:    `Translation to Spanish: "Hola mundo"`,
 			},
 			{
-				name:        "word count with single quotes",
-				instruction: `Count words in 'This is a test'`,
-				expected:    `The text "This is a test" contains 4 words.`,
+				name:        "translate to french with single quotes",
+				instruction: `Translate 'the quick brown fox' to French`,
+				expected:    `Translation to French: "le renard brun rapide"`,
 			},
 			{
-				name:        "word count with following pattern",
-				instruction: `Count the words in the following text: Beautiful day today`,
-				expected:    `The text "Beautiful day today" contains 3 words.`,
+				name:        "translate with following pattern",
+				instruction: `Translate the following text to German: the quick brown fox`,
+				expected:    `Translation to German: "der schnelle braune Fuchs"`,
 			},
 		}
 
@@ -51,37 +51,37 @@ func TestAINativeAgent_ProcessInstruction(t *testing.T) {
 		}
 	})
 
-	t.Run("should analyze text correctly", func(t *testing.T) {
-		instruction := `Analyze the text: "Hello world"`
+	t.Run("should detect language correctly", func(t *testing.T) {
+		instruction := `Detect the language of: "Hola mundo"`
 		result := agent.ProcessInstruction(instruction)
 
-		// Should contain analysis information
-		assert.Contains(t, result, "Hello world")
-		assert.Contains(t, result, "2 words")
-		assert.Contains(t, result, "11 characters")
-		assert.Contains(t, result, "10 letters")
+		// Should contain language detection information
+		assert.Equal(t, "Detected language: Spanish", result)
 	})
 
-	t.Run("should count characters correctly", func(t *testing.T) {
-		instruction := `Count characters in "Hello"`
+	t.Run("should format translation correctly", func(t *testing.T) {
+		instruction := `Format translation of "hello world" to Portuguese`
 		result := agent.ProcessInstruction(instruction)
 
-		assert.Equal(t, `The text "Hello" contains 5 characters.`, result)
+		assert.Contains(t, result, "Formatted translation:")
+		assert.Contains(t, result, "hello world")
+		assert.Contains(t, result, "Portuguese")
 	})
 
-	t.Run("should default to word count for unclear instructions", func(t *testing.T) {
-		instruction := `Process this text: "Default test"`
+	t.Run("should default to english translation for unclear instructions", func(t *testing.T) {
+		instruction := `Process this text: "hello world"`
 		result := agent.ProcessInstruction(instruction)
 
-		assert.Contains(t, result, "2 words")
+		assert.Contains(t, result, "Translation to English:")
+		assert.Contains(t, result, "[English] hello world")
 	})
 
 	t.Run("should handle conversation stream messages", func(t *testing.T) {
 		// Test that the agent can process instruction messages from a conversation stream
 		// This tests the integration between stream message handling and instruction processing
 
-		instruction := `Count the words in "Hello world"`
-		expectedContent := `The text "Hello world" contains 2 words.`
+		instruction := `Translate "hello world" to Spanish`
+		expectedContent := `Translation to Spanish: "Hola mundo"`
 
 		// Create a mock conversation message
 		msg := &pb.ConversationMessage{
@@ -160,7 +160,7 @@ func TestAINativeAgent_ExtractTextFromInstruction(t *testing.T) {
 	}
 }
 
-func TestAINativeAgent_CountWords(t *testing.T) {
+func TestAINativeAgent_TranslateText(t *testing.T) {
 	config := Config{
 		AgentID:             "test-agent",
 		Name:                "Test Agent",
@@ -169,46 +169,52 @@ func TestAINativeAgent_CountWords(t *testing.T) {
 	agent := NewAINativeAgent(config)
 
 	testCases := []struct {
-		name     string
-		text     string
-		expected int
+		name       string
+		text       string
+		targetLang string
+		expected   string
 	}{
 		{
-			name:     "simple text",
-			text:     "Hello world",
-			expected: 2,
+			name:       "spanish translation",
+			text:       "hello world",
+			targetLang: "Spanish",
+			expected:   "Hola mundo",
 		},
 		{
-			name:     "multiple spaces",
-			text:     "Hello    world   test",
-			expected: 3,
+			name:       "french translation",
+			text:       "hello world",
+			targetLang: "French",
+			expected:   "Bonjour le monde",
 		},
 		{
-			name:     "empty text",
-			text:     "",
-			expected: 0,
+			name:       "empty text",
+			text:       "",
+			targetLang: "Spanish",
+			expected:   "",
 		},
 		{
-			name:     "whitespace only",
-			text:     "   ",
-			expected: 0,
+			name:       "german translation",
+			text:       "the quick brown fox",
+			targetLang: "German",
+			expected:   "der schnelle braune Fuchs",
 		},
 		{
-			name:     "single word",
-			text:     "Hello",
-			expected: 1,
+			name:       "portuguese translation",
+			text:       "hello world",
+			targetLang: "Portuguese",
+			expected:   "Olá mundo",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := agent.countWords(tc.text)
+			result := agent.translateText(tc.text, tc.targetLang)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
 }
 
-func TestAINativeAgent_AnalyzeText(t *testing.T) {
+func TestAINativeAgent_DetectLanguage(t *testing.T) {
 	config := Config{
 		AgentID:             "test-agent",
 		Name:                "Test Agent",
@@ -222,25 +228,25 @@ func TestAINativeAgent_AnalyzeText(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "simple text",
-			text:     "Hello",
-			expected: "1 words, 5 characters, 5 letters",
+			name:     "english text",
+			text:     "Hello world",
+			expected: "English",
 		},
 		{
-			name:     "text with spaces and punctuation",
-			text:     "Hello, world!",
-			expected: "2 words, 13 characters, 10 letters",
+			name:     "spanish text",
+			text:     "Hola mundo",
+			expected: "Spanish",
 		},
 		{
-			name:     "empty text",
-			text:     "",
-			expected: "empty text",
+			name:     "french text",
+			text:     "Bonjour le monde",
+			expected: "French",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := agent.analyzeText(tc.text)
+			result := agent.detectLanguage(tc.text)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
@@ -264,9 +270,9 @@ func TestAINativeAgent_GetCapabilities(t *testing.T) {
 		capabilityNames[i] = cap.Name
 	}
 
-	assert.Contains(t, capabilityNames, "word-count")
-	assert.Contains(t, capabilityNames, "text-analysis")
-	assert.Contains(t, capabilityNames, "character-count")
+	assert.Contains(t, capabilityNames, "translate-text")
+	assert.Contains(t, capabilityNames, "detect-language")
+	assert.Contains(t, capabilityNames, "format-translation")
 
 	// Check descriptions are present
 	for _, cap := range capabilities {
